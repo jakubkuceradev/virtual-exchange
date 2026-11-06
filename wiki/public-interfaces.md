@@ -7,20 +7,21 @@ title: Public Application Interfaces
 
 The repository separates the exchange from the website. Callable source stubs
 outline public responsibilities only; internal implementation structure stays
-open. Only the exchange API factory and health route currently work.
+open. Both the exchange and website backend factories and health routes work.
 
 ## Application boundaries
 
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
-website/backend/      Competition and participant-facing API; placeholder
+website/backend/      Independent health-only API; competition still planned
 website/frontend/     Browser experience; placeholder
 ```
 
 The website backend consumes published exchange APIs/data. It imports no exchange
 implementation and reads no exchange database. The exchange has no dependency on
 competition or website code. Bots are external exchange API clients.
-Website stacks, dependency manifests, tests, and builds are deferred.
+The backend uses an independent FastAPI/Uvicorn package, tests, lockfile, and
+image. The frontend stack remains deferred.
 
 ## Exchange interfaces
 
@@ -43,11 +44,15 @@ interface. Internal files, matching rules, funding mechanisms, and storage choic
 are deliberately not scaffolded. Unlimited bot money is a future funding policy;
 it gives no extra matching priority.
 
+Trading callable definitions live in virtual_exchange.exchange.interface;
+virtual_exchange.exchange re-exports them, preserving the caller-facing imports.
+Package initializers contain only documentation, imports/exports, and metadata.
+
 ## Website interfaces
 
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
-| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. No scoring or routes implemented. |
+| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
 | Frontend | Browser interactions and website-backend responses | Participant views and competition presentation. Browser trading/data routing and framework remain undecided. |
 
 The website backend distinguishes public market feeds from authorized account
@@ -67,8 +72,9 @@ Account IDs must eventually come from trusted authentication; passing a string
 today grants no access because every stub fails. Authorization remains the
 exchange interface's responsibility, not a claim established by type annotations.
 
-The flow is planned. Placeholders do not authenticate, match, settle, publish,
-or score. No event bus or extra runtime service is introduced.
+The integration flow is planned. Placeholders do not authenticate, match, settle,
+publish, or score. The backend health example runs without exchange imports,
+network calls, or an event bus. Root Compose starts both independent APIs.
 
 See [development setup](/development.md) for commands and
 [architecture principles](/architecture-principles.md) for the design rationale.

@@ -2,8 +2,8 @@
 
 A [Prague Quant Club](https://praguequantclub.org/) project: a 24/7 online hackathon where participants trade fictional assets on a simulated exchange through a public API.
 
-The exchange API scaffold is runnable. The website frontend and backend have
-public-interface outlines; trading and website functionality are not implemented.
+The exchange and website backend have runnable health-only APIs. Trading,
+competition, and the website frontend remain unimplemented.
 
 ## Run locally
 
@@ -14,7 +14,8 @@ uv sync --project exchange --locked
 uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --factory
 ```
 
-Check `http://127.0.0.1:8000/health`. Alternatively, run `docker compose up --build --wait`.
+Run both APIs with `docker compose up --build --wait`: exchange health is on
+port 8000 and website backend health on port 8001.
 See [development setup](wiki/development.md) for checks, containers, and project layout.
 
 ## Documentation

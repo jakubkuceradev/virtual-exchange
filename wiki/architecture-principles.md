@@ -38,9 +38,9 @@ There is no shared ORM/domain library or service framework in this scaffold.
 ## Reversibility and information hiding
 
 Each application owns its eventual dependencies, tests, and build configuration.
-Only exchange has an implementation and package setup today. Avoid selecting a
-website stack or committing callable signatures/data schemas before callers need
-them. Public interfaces can grow into deep modules without prescribing internal
+Exchange and website backend have independent runnable health scaffolds today;
+frontend has no selected stack. Keep backend behavior minimal and defer frontend stack and domain schemas
+until callers need them. Public interfaces can grow into deep modules without prescribing internal
 classes, folders, or separate deployments.
 
 Each policy needs one authoritative owner. Reconsider a split if implementation

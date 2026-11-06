@@ -9,7 +9,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 ## Project knowledge
 
 - [Public interfaces](public-interfaces.md) — Exchange/website separation, conceptual contracts, and placeholder status.
-- [Development setup](development.md) — Local startup, current version baseline, checks, containers, and package layout.
+- [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
 - [Visual overview](overview.html) — Dark visual document with module interactions and the first vertical slice.
 - [Project scope](project-scope.md) — Purpose, public/private boundaries, conceptual responsibilities, and current status.
 - [Development priorities](development-priorities.md) — Vertical slices and the first working trading flow.

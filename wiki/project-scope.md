@@ -19,14 +19,14 @@ undefined.
 A separate private repository will contain simulated bots and their special
 authentication details. See [Exchange and bots](/exchange-and-bots.md).
 
-The runnable exchange lives in exchange/. The website has separate backend/ and
-frontend/ placeholders under website/. Competition belongs to the website
+The runnable exchange lives in exchange/. The website backend is a separate
+health-only application; website/frontend/ remains a placeholder. Competition belongs to the website
 backend and consumes exchange data; see [public interfaces](/public-interfaces.md).
 
 ## Current status
 
 The repository contains public-interface placeholders, a Python API scaffold,
-a health endpoint, development
+independent exchange/backend health endpoints, development
 checks, CI configuration, Docker/Compose support, and project documentation.
 Order handling, matching, settlement, market data, and rankings remain
 unimplemented. See [development setup](/development.md). The overview's boxes
