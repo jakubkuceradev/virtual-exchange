@@ -14,8 +14,8 @@ Install Python 3.15.2 and [uv](https://docs.astral.sh/uv/getting-started/install
 From the project root:
 
 ```sh
-uv sync --locked
-uv run --locked uvicorn virtual_exchange.api:create_app --factory
+uv sync --project exchange --locked
+uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --factory
 ```
 
 The server binds to 127.0.0.1:8000. In another terminal:
@@ -32,7 +32,7 @@ Dependency installation needs network access; normal runtime does not.
 Choose a different address or port with Uvicorn flags:
 
 ```sh
-uv run --locked uvicorn virtual_exchange.api:create_app --factory --host 127.0.0.1 --port 8001
+uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --factory --host 127.0.0.1 --port 8001
 ```
 
 Keep loopback binding for local development. Uvicorn reports invalid arguments
@@ -49,17 +49,19 @@ current releases; uv.lock records the resolved graph.
 ## Checks and packaging
 
 ```sh
-uv run --locked pytest
-uv run --locked ruff check .
-uv run --locked ruff format --check .
-uv build
+uv run --project exchange --locked pytest exchange/tests
+uv run --project exchange --locked ruff check exchange
+uv run --project exchange --locked ruff format --check exchange
+uv build --project exchange
 ```
 
-To apply formatting, use `uv run --locked ruff format .`. Project metadata and
-check configuration live in pyproject.toml; uv.lock pins resolved dependencies.
-Intentional dependency changes use `uv lock` followed by the checks. The src
+To apply formatting, use `uv run --project exchange --locked ruff format exchange`. Project metadata and
+check configuration live in exchange/pyproject.toml; exchange/uv.lock pins resolved dependencies.
+Intentional dependency changes use `uv lock --project exchange` followed by the checks. The src
 layout requires installing the package; do not add PYTHONPATH workarounds.
-GitHub Actions runs the same checks and a separate container smoke check.
+GitHub Actions runs the same Python checks from exchange/ and a separate
+container smoke check from the repository root. Inside exchange/, omit the
+--project option and use pytest, ruff check ., and ruff format --check . as usual.
 
 ## Docker and Compose
 
@@ -77,7 +79,7 @@ To change the host port on a POSIX shell:
 PORT=8001 docker compose up --build --wait
 ```
 
-Compose publishes to host loopback. The API listens on all interfaces inside
+Compose builds from exchange/ and publishes to host loopback. The API listens on all interfaces inside
 the container so published traffic can reach it. The image runs as an
 unprivileged user, installs locked runtime dependencies, and has an HTTP
 healthcheck. There are no volumes, credentials, or extra services. Build needs
@@ -87,7 +89,7 @@ service. This is local scaffolding, not production deployment configuration.
 For Docker without Compose:
 
 ```sh
-docker build -t virtual-exchange:local .
+docker build -t virtual-exchange:local ./exchange
 docker run --rm --name virtual-exchange-local -p 127.0.0.1:8000:8000 virtual-exchange:local
 ```
 
@@ -97,16 +99,18 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 
 | Location | Responsibility and status |
 | --- | --- |
-| src/virtual_exchange/api.py | FastAPI factory and health route; no import-time startup |
-| src/virtual_exchange/exchange/ | Documented placeholder for the future exchange core |
-| tests/ | HTTP checks against the actual application |
-| pyproject.toml, uv.lock | Packaging, dependencies, and tool configuration |
-| Dockerfile, compose.yaml | Container build and single-service local startup |
-| .github/workflows/checks.yml | Python checks and container smoke verification |
+| exchange/src/virtual_exchange/api.py | FastAPI factory and health route |
+| exchange/src/virtual_exchange/auth.py | Callable authentication interface stubs |
+| exchange/src/virtual_exchange/exchange/ | Callable trading interface stubs |
+| exchange/src/virtual_exchange/market_data.py | Callable market-data interface stubs |
+| exchange/tests/ | HTTP checks against the actual application |
+| exchange/pyproject.toml, exchange/uv.lock | Independent Python packaging, dependencies, and tool configuration |
+| exchange/Dockerfile, exchange/.dockerignore | Exchange image and build context |
+| website/backend/, website/frontend/ | Public responsibility outlines; no stack or runtime yet |
+| compose.yaml, .github/workflows/ | Shared local startup and CI |
 | wiki/ | Project knowledge and offline visual overview |
 
-Matching, ledger/funding, and persistence belong inside the future exchange
-boundary. Market data and competition remain documentation-only responsibilities.
-No fake exchange operations or private bot code are included. See
-[architecture principles](/architecture-principles.md) for the broader proposal
-and [development priorities](/development-priorities.md) for the trading slice.
+Only the exchange is runnable. Website dependencies, tests, and image definitions
+will be added within its backend/frontend folders when their stacks are chosen.
+See [public interfaces](/public-interfaces.md) for operations and dependency
+boundaries. Internal exchange modules remain unspecified.
