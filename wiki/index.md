@@ -13,6 +13,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 - [Development priorities](development-priorities.md) — Vertical slices and the first working trading flow.
 - [Exchange and bots](exchange-and-bots.md) — Fictional assets, price formation, API expectations, and bot rules.
 - [Exchange tradeoffs](exchange-tradeoffs.md) — Recommendations weighing first-slice realism against complexity; not yet agreed.
+- [Architecture principles](architecture-principles.md) — Proposed deep modules, ownership, and boundaries for independent change.
 - [Competition](competition.md) — Continuous accounts, period rankings, and undecided scoring rules.
 
 ## System
