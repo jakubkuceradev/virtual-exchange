@@ -6,7 +6,7 @@ The API scaffold is runnable; trading is not implemented yet.
 
 ## Run locally
 
-With Python 3.14 and [uv](https://docs.astral.sh/uv/):
+With Python 3.15.2 and [uv](https://docs.astral.sh/uv/) 0.13.7 or newer:
 
 ```sh
 uv sync --locked

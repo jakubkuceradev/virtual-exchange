@@ -10,7 +10,7 @@ competition behavior are not implemented.
 
 ## Local setup
 
-Install Python 3.14 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+Install Python 3.15.2 and [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.13.7 or newer.
 From the project root:
 
 ```sh
@@ -38,6 +38,13 @@ uv run --locked uvicorn virtual_exchange.api:create_app --factory --host 127.0.0
 Keep loopback binding for local development. Uvicorn reports invalid arguments
 and bind failures with nonzero exit status. No separate application configuration
 or environment-file loader exists yet.
+
+## Version baseline
+
+Reviewed against current stable releases on 2026-11-06: Python 3.15.2,
+uv 0.13.7, checkout 7.0.1, setup-uv 10.3.3, and Hatchling 1.33.0. CI and the
+container pin those runtime/tool versions. Direct dependency minimums reflect
+current releases; uv.lock records the resolved graph.
 
 ## Checks and packaging
 

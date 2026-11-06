@@ -9,11 +9,11 @@ jobs:
   python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
-          version: "0.12.21"
-          python-version: "3.14"
+          version: "0.13.7"
+          python-version: "3.15.2"
       - run: uv sync --locked
       - run: uv run --locked pytest
       - run: uv run --locked ruff check .
@@ -23,7 +23,7 @@ jobs:
   container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - run: docker compose config --quiet
       - run: docker compose up --build --wait --wait-timeout 120
       - name: Check API over HTTP
