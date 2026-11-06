@@ -5,9 +5,10 @@ title: Deep and Orthogonal Module Boundaries
 
 # Deep and orthogonal module boundaries
 
-Status: architecture proposal for discussion; not an approved implementation
-plan. The user requested application of deep modules and orthogonality to this
-project.
+Status: broader exchange architecture remains a proposal. The initial Python
+API scaffolding layout is agreed and implemented; see
+[development setup](/development.md). The user requested application of deep
+modules and orthogonality to this project.
 
 Prefer interfaces that hide substantial complexity and boundaries that allow
 unrelated changes to stay local. Orthogonality does not remove the need for

@@ -8,7 +8,13 @@ title: Development Priorities
 Build in vertical slices. Establish a working exchange first, then expand the
 other project capabilities incrementally.
 
-## First slice
+## Foundation
+
+The first implementation change establishes package structure, a runnable API
+health endpoint, checks, CI, and Docker/Compose startup. Exchange behavior is
+still pending; see [development setup](/development.md).
+
+## First trading slice
 
 The initial direction is an end-to-end trading flow: accept bids and asks
 through the public API, match compatible orders, and expose the resulting
