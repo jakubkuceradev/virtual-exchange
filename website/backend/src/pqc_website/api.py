@@ -1,10 +1,10 @@
-"""Website HTTP application; no exchange dependency or import-time startup."""
+"""Experimental website HTTP scaffold; only the health route is implemented."""
 
 from fastapi import FastAPI
 
 
 def create_app() -> FastAPI:
-    """Create the example backend; health indicates liveness only."""
+    """Build an isolated website app without an exchange dependency."""
     app = FastAPI(
         title="Prague Quant Club Website",
         docs_url=None,
@@ -14,6 +14,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
+        """Report backend liveness without contacting the exchange."""
         return {"status": "ok"}
 
     return app

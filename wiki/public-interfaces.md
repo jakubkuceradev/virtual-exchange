@@ -5,6 +5,9 @@ title: Public Application Interfaces
 
 # Public application interfaces
 
+**Experimental:** interfaces, record fields, and signatures are not yet finalized
+and may change as the MVP behavior is implemented.
+
 The repository separates the exchange from the website. Callable source stubs
 outline public responsibilities only; internal implementation structure stays
 open. Both the exchange and website backend factories and health routes work.
@@ -27,10 +30,13 @@ image. The frontend stack remains deferred.
 
 The Python callable signatures exist, but every new operation raises
 NotImplementedError without side effects. None is exposed as an HTTP endpoint.
-Keyword-only arguments identify the caller's intent. Mapping request/result
-envelopes and sequence query results are provisional; concrete schemas, credential
-fields, error taxonomy, pagination, and synchronous/asynchronous execution will
-be settled in later behavioral slices before those APIs are published.
+Keyword-only arguments identify the caller's intent. Return types are named,
+immutable standard-library dataclasses, with tuples for collections, Decimal
+prices/quantities, and explicit None for missing market observations. They define
+field shapes, not runtime business validation. Order/credential request fields,
+error taxonomy, pagination, and execution behavior remain for later slices.
+Pydantic request/response validation belongs at future HTTP boundaries; core
+records stay independent of the web framework.
 
 | Public module | Intended inputs and operations | Intended outputs and failures |
 | --- | --- | --- |
@@ -47,6 +53,33 @@ it gives no extra matching priority.
 Trading callable definitions live in virtual_exchange.exchange.interface;
 virtual_exchange.exchange re-exports them, preserving the caller-facing imports.
 Package initializers contain only documentation, imports/exports, and metadata.
+Use absolute imports only; Ruff rejects relative imports in both projects.
+Define __all__ only in __init__.py; callable modules import the types used by
+their annotations, with no duplicate export lists.
+
+## Typed results
+
+| Operation | Declared result |
+| --- | --- |
+| authenticate | AuthenticatedIdentity |
+| submit_order | SubmitOrderResult containing OrderSnapshot and Fill records |
+| cancel_order, get_order | OrderSnapshot |
+| list_orders, list_fills, get_balances, list_instruments | Tuples of OrderSnapshot, Fill, Balance, Instrument respectively |
+| get_order_book | OrderBookSnapshot containing BookLevel records |
+| list_trades | Tuple of public Trade records |
+| get_ticker | Ticker, with optional quotes and optional last Trade |
+
+Dataclasses and enums live in virtual_exchange.types, split into auth, trading,
+and market_data modules. These modules depend only on the standard library and
+never import callable interfaces. Interfaces import types in one direction.
+The exchange package facade preserves its type re-exports; use
+virtual_exchange.types for canonical type imports.
+Reserve HTTP/Pydantic schemas for the transport boundary; this package contains
+framework-independent records, with no internal model hierarchy. Producers will supply timezone-aware timestamps. State/enumeration
+and input-validation rules remain provisional until the corresponding behavior
+is implemented. Records can be constructed for examples, but stubs never return
+fabricated instances. Authentication results do not contain credentials; public
+trades do not contain private account/order identifiers.
 
 ## Website interfaces
 

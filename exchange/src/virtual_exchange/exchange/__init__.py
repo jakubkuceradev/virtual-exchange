@@ -1,6 +1,6 @@
-"""Public trading operations; implementations remain unimplemented stubs."""
+"""Export experimental trading contracts and stubs that are not yet finalized."""
 
-from .interface import (
+from virtual_exchange.exchange.interface import (
     cancel_order,
     get_balances,
     get_order,
@@ -9,8 +9,24 @@ from .interface import (
     list_orders,
     submit_order,
 )
+from virtual_exchange.types.trading import (
+    Balance,
+    Fill,
+    Instrument,
+    OrderSide,
+    OrderSnapshot,
+    OrderStatus,
+    SubmitOrderResult,
+)
 
 __all__ = [
+    "Balance",
+    "Fill",
+    "Instrument",
+    "OrderSide",
+    "OrderSnapshot",
+    "OrderStatus",
+    "SubmitOrderResult",
     "cancel_order",
     "get_balances",
     "get_order",

@@ -7,6 +7,7 @@ from pqc_website.api import create_app
 
 
 def test_health_reports_liveness():
+    """Verify the application reports liveness through its health route."""
     with TestClient(create_app()) as client:
         response = client.get("/health")
 
@@ -19,6 +20,7 @@ def test_health_reports_liveness():
     "path", ["/does-not-exist", "/leaderboard", "/orders", "/docs", "/openapi.json"]
 )
 def test_unimplemented_routes_are_not_exposed(path):
+    """Verify unfinished application routes return HTTP 404."""
     with TestClient(create_app()) as client:
         response = client.get(path)
 

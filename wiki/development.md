@@ -64,6 +64,14 @@ current releases; uv.lock records the resolved graph.
 
 ## Checks and packaging
 
+Always run Ruff lint and formatting, including quick iterations. Ruff TID252
+also rejects all relative imports in both projects. From the root,
+`uv run --project exchange --locked ruff check exchange website/backend` and
+`uv run --project exchange --locked ruff format exchange website/backend` cover
+both apps. Use `format --check` before committing. Keep test execution focused
+when iterating quickly; configured CI provides the full checks after a push.
+
+
 ```sh
 uv run --project exchange --locked pytest exchange/tests
 uv run --project exchange --locked ruff check exchange
@@ -124,6 +132,7 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | Location | Responsibility and status |
 | --- | --- |
 | exchange/src/virtual_exchange/api.py | FastAPI factory and health route |
+| exchange/src/virtual_exchange/types/ | Public dataclasses/enums; no imports from callable interfaces |
 | exchange/src/virtual_exchange/auth.py | Callable authentication interface stubs |
 | exchange/src/virtual_exchange/exchange/interface.py | Callable trading interface stubs; __init__.py only re-exports them |
 | exchange/src/virtual_exchange/market_data.py | Callable market-data interface stubs |

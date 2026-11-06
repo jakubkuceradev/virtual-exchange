@@ -1,1 +1,1 @@
-"""Prague Quant Club website backend."""
+"""Experimental website backend scaffold; interfaces are not yet finalized."""

@@ -1,33 +1,22 @@
-"""Public market-data interface placeholder; no market views are implemented.
+"""Experimental market-data interface; unimplemented and not yet finalized."""
 
-Intended queries take an instrument and return public order-book snapshots,
-recent trades, or ticker observations. Last-traded price can be unavailable;
-observations will need explicit freshness/sequence and recovery contracts.
-
-Consume committed exchange facts through its public boundary. Never expose
-private account balances/orders as public market data or mutate exchange state.
-Transport, streaming, retention, and concrete data schemas remain undecided.
-"""
-
-from collections.abc import Mapping, Sequence
+from virtual_exchange.types.market_data import (
+    OrderBookSnapshot,
+    Ticker,
+    Trade,
+)
 
 
-def get_order_book(*, instrument_id: str) -> Mapping[str, object]:
-    """Read a public book snapshot; not implemented.
-
-    Depth and snapshot sequence/freshness contracts remain to be defined.
-    """
+def get_order_book(*, instrument_id: str) -> OrderBookSnapshot:
+    """Read a public order-book snapshot; not implemented."""
     raise NotImplementedError("get_order_book is not implemented")
 
 
-def list_trades(*, instrument_id: str) -> Sequence[Mapping[str, object]]:
-    """Read public executions; history and pagination are deferred."""
+def list_trades(*, instrument_id: str) -> tuple[Trade, ...]:
+    """List an instrument's public executions; not implemented."""
     raise NotImplementedError("list_trades is not implemented")
 
 
-def get_ticker(*, instrument_id: str) -> Mapping[str, object]:
-    """Read public price observations; not implemented.
-
-    No executions means no last-traded price; never substitute a fabricated zero.
-    """
+def get_ticker(*, instrument_id: str) -> Ticker:
+    """Read current quotes and the optional last trade; not implemented."""
     raise NotImplementedError("get_ticker is not implemented")

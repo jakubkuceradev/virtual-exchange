@@ -3,7 +3,8 @@
 A [Prague Quant Club](https://praguequantclub.org/) project: a 24/7 online hackathon where participants trade fictional assets on a simulated exchange through a public API.
 
 The exchange and website backend have runnable health-only APIs. Trading,
-competition, and the website frontend remain unimplemented.
+competition, and the website frontend remain unimplemented. Public interfaces
+are experimental and not yet finalized.
 
 ## Run locally
 

@@ -1,1 +1,1 @@
-"""Prague Quant Club virtual exchange."""
+"""Experimental exchange interfaces; contracts are not yet finalized."""

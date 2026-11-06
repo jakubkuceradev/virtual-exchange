@@ -1,63 +1,48 @@
-"""Public trading interface placeholder; no trading operations are implemented.
+"""Experimental trading interface; operations are unimplemented and not finalized."""
 
-Intended commands accept authenticated identity and order intent to submit or
-cancel an order. Queries expose that account's orders, fills, and balances, plus
-instrument metadata. Results and errors must describe complete operations.
+from collections.abc import Mapping
 
-The exchange owns consistent trading state behind this boundary. Callers must
-not coordinate matching, funding, settlement, or persistence themselves. Internal
-structure and concrete data schemas are left for later slices.
-
-This boundary knows nothing about competition periods, rankings, website code,
-HTTP credentials, or private bot strategies.
-"""
-
-from collections.abc import Mapping, Sequence
+from virtual_exchange.types.trading import (
+    Balance,
+    Fill,
+    Instrument,
+    OrderSnapshot,
+    SubmitOrderResult,
+)
 
 
 def submit_order(
     *, account_id: str, request_id: str, order: Mapping[str, object]
-) -> Mapping[str, object]:
-    """Submit order intent as one complete operation; not implemented.
-
-    The future result describes acceptance/rejection and any executions. It must
-    coordinate trading effects durably before success. Request IDs will identify
-    retries; order fields and retry rules remain to be specified.
-    """
+) -> SubmitOrderResult:
+    """Submit an order as one coordinated trading operation; not implemented."""
     raise NotImplementedError("submit_order is not implemented")
 
 
-def cancel_order(
-    *, account_id: str, request_id: str, order_id: str
-) -> Mapping[str, object]:
-    """Cancel an owned order's unfilled quantity; not implemented.
-
-    Prior executions remain final. Unknown/not-owned orders and retries require
-    explicit outcomes; no order is looked up or changed by this stub.
-    """
+def cancel_order(*, account_id: str, request_id: str, order_id: str) -> OrderSnapshot:
+    """Cancel an owned order's unfilled quantity; not implemented."""
     raise NotImplementedError("cancel_order is not implemented")
 
 
-def get_order(*, account_id: str, order_id: str) -> Mapping[str, object]:
-    """Read an owned order's state or report access/not-found failure; not implemented."""
+def get_order(*, account_id: str, order_id: str) -> OrderSnapshot:
+    """Read an owned order snapshot; not implemented."""
     raise NotImplementedError("get_order is not implemented")
 
 
-def list_orders(*, account_id: str) -> Sequence[Mapping[str, object]]:
-    """Read the account's orders; filtering and pagination are deferred."""
+def list_orders(*, account_id: str) -> tuple[OrderSnapshot, ...]:
+    """List an account's orders; not implemented."""
     raise NotImplementedError("list_orders is not implemented")
 
 
-def list_fills(*, account_id: str) -> Sequence[Mapping[str, object]]:
-    """Read the account's executions; history and pagination are deferred."""
+def list_fills(*, account_id: str) -> tuple[Fill, ...]:
+    """List an account's executions; not implemented."""
     raise NotImplementedError("list_fills is not implemented")
 
 
-def get_balances(*, account_id: str) -> Sequence[Mapping[str, object]]:
-    """Read owned asset balances, including availability/reservations; not implemented."""
+def get_balances(*, account_id: str) -> tuple[Balance, ...]:
+    """Read an account's available and reserved asset balances; not implemented."""
     raise NotImplementedError("get_balances is not implemented")
 
 
-def list_instruments() -> Sequence[Mapping[str, object]]:
-    """Read instrument definitions and trading constraints; not implemented."""
+def list_instruments() -> tuple[Instrument, ...]:
+    """List supported instruments and trading constraints; not implemented."""
     raise NotImplementedError("list_instruments is not implemented")

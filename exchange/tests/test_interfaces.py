@@ -28,5 +28,6 @@ from virtual_exchange import auth, exchange, market_data
     ],
 )
 def test_unimplemented_operations_fail_explicitly(operation, arguments):
+    """Reject unimplemented operations instead of fabricating successful results."""
     with pytest.raises(NotImplementedError, match="not implemented"):
         operation(**arguments)
