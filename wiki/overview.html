@@ -48,57 +48,60 @@
     <p class="eyebrow">Prague Quant Club · project overview</p>
     <h1>Virtual Exchange</h1>
     <p>A 24/7 trading competition. Fictional assets, real order-book behavior.</p>
-    <p class="muted">Now: API scaffold, /health, checks, and Docker/Compose. Trading modules below are planned.</p>
+    <p class="muted">Now: exchange and website backend /health examples. Trading and frontend remain placeholders.</p>
   </header>
 
   <section aria-labelledby="system-title">
     <p class="number">01 / The system</p>
-    <h2 id="system-title">One exchange, people and bots</h2>
+    <h2 id="system-title">Separate applications, public contracts</h2>
     <figure>
       <div class="diagram">
-        <svg viewBox="0 0 880 540" role="img" aria-labelledby="map-title map-desc">
-          <title id="map-title">Exchange modules and information flow</title>
-          <desc id="map-desc">Participant clients and private bots send requests to the public API. The API connects to matching and accounts. Matching checks available funds with accounts and produces fills for settlement. Orders and fills feed market data. Account state and market prices feed rankings. Clients query results through the API.</desc>
+        <svg viewBox="0 0 880 655" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">Public exchange and website boundaries</title>
+          <desc id="map-desc">Trading clients and private bots use the exchange API. The exchange exposes authentication, complete trading operations and market data, with implementation details hidden. Published exchange market and authorized account data feed a separate website backend, which owns competition and rankings. The frontend displays website results.</desc>
           <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/></marker></defs>
-          <rect class="box" x="125" y="22" width="260" height="62" rx="8"/>
-          <text x="255" y="49" text-anchor="middle">Participant clients</text>
-          <text class="small" x="255" y="69" text-anchor="middle">People &amp; trading programs</text>
-          <rect class="private" x="495" y="22" width="260" height="62" rx="8"/>
-          <text x="625" y="49" text-anchor="middle">Simulated bots</text>
-          <text class="small" x="625" y="69" text-anchor="middle">Private repository</text>
-          <path class="edge" d="M255 84 V113 H365 V140"/>
-          <path class="edge" d="M625 84 V113 H515 V140"/>
-          <text class="small" x="440" y="105" text-anchor="middle">Bids · asks · queries</text>
-          <rect class="core" x="280" y="140" width="320" height="60" rx="8"/>
-          <text x="440" y="176" text-anchor="middle">Public API &amp; authentication</text>
-          <path class="edge" d="M365 200 V230 H210 V265"/>
-          <path class="edge" d="M515 200 V230 H670 V265"/>
-          <rect class="core" x="70" y="265" width="280" height="68" rx="8"/>
-          <text x="210" y="294" text-anchor="middle">Order book &amp; matching</text>
-          <text class="small" x="210" y="315" text-anchor="middle">Bids + asks → executions</text>
-          <rect class="box" x="530" y="265" width="280" height="68" rx="8"/>
-          <text x="670" y="294" text-anchor="middle">Accounts &amp; settlement</text>
-          <text class="small" x="670" y="315" text-anchor="middle">Cash · holdings · trade effects</text>
-          <path class="edge" d="M350 285 H530"/>
-          <text class="small" x="440" y="277" text-anchor="middle">Fills → settlement</text>
-          <path class="edge" d="M530 322 H350"/>
-          <text class="small" x="440" y="345" text-anchor="middle">Funding checks*</text>
-          <path class="edge" d="M210 333 V410"/>
-          <text class="small" x="225" y="380">Orders &amp; fills</text>
-          <rect class="box" x="70" y="410" width="280" height="68" rx="8"/>
-          <text x="210" y="439" text-anchor="middle">Market data</text>
-          <text class="small" x="210" y="460" text-anchor="middle">Book · quotes · trade prices</text>
-          <path class="edge" d="M670 333 V410"/>
-          <text class="small" x="685" y="380">Account state</text>
-          <rect class="box" x="530" y="410" width="280" height="68" rx="8"/>
-          <text x="670" y="439" text-anchor="middle">Competition &amp; rankings</text>
-          <text class="small" x="670" y="460" text-anchor="middle">Continuous · week · month · year</text>
-          <path class="edge" d="M350 444 H530"/>
-          <text class="small" x="440" y="433" text-anchor="middle">Market valuation</text>
-          <text class="small" x="440" y="515" text-anchor="middle">Order status, fills, balances &amp; market data return to clients through the API.</text>
+          <rect class="box" x="105" y="22" width="280" height="62" rx="8"/>
+          <text x="245" y="49" text-anchor="middle">Trading clients</text>
+          <text class="small" x="245" y="69" text-anchor="middle">Participants &amp; their programs</text>
+          <rect class="private" x="495" y="22" width="280" height="62" rx="8"/>
+          <text x="635" y="49" text-anchor="middle">Simulated bots</text>
+          <text class="small" x="635" y="69" text-anchor="middle">Separate private repository</text>
+          <path class="edge" d="M245 84 V112 H365 V195"/>
+          <path class="edge" d="M635 84 V112 H515 V195"/>
+          <text class="small" x="440" y="105" text-anchor="middle">Orders &amp; queries</text>
+          <rect x="42" y="145" width="796" height="260" rx="8" fill="none" stroke="var(--core-border)"/>
+          <text x="65" y="174">exchange/</text>
+          <rect class="core" x="280" y="195" width="320" height="55" rx="8"/>
+          <text x="440" y="228" text-anchor="middle">Exchange API</text>
+          <path class="edge" d="M335 250 V274 H180 V295"/>
+          <path class="edge" d="M440 250 V295"/>
+          <path class="edge" d="M545 250 V274 H700 V295"/>
+          <rect class="box" x="80" y="295" width="200" height="65" rx="8"/>
+          <text x="180" y="323" text-anchor="middle">Authentication</text>
+          <text class="small" x="180" y="344" text-anchor="middle">Identity &amp; permissions</text>
+          <rect class="core" x="340" y="295" width="200" height="65" rx="8"/>
+          <text x="440" y="323" text-anchor="middle">Trading interface</text>
+          <text class="small" x="440" y="344" text-anchor="middle">Orders · fills · balances</text>
+          <rect class="box" x="600" y="295" width="200" height="65" rx="8"/>
+          <text x="700" y="323" text-anchor="middle">Market data</text>
+          <text class="small" x="700" y="344" text-anchor="middle">Book · trades · ticker</text>
+          <text class="small" x="440" y="386" text-anchor="middle">Public contracts only; internal modules remain undefined.</text>
+          <path class="edge" d="M240 405 V500"/>
+          <text class="small" x="260" y="438">Published market &amp; authorized account data</text>
+          <rect x="65" y="460" width="750" height="165" rx="8" fill="none" stroke="var(--node-border)"/>
+          <text x="88" y="485">website/</text>
+          <rect class="box" x="90" y="500" width="290" height="90" rx="8"/>
+          <text x="235" y="532" text-anchor="middle">Backend</text>
+          <text class="small" x="235" y="556" text-anchor="middle">Health demo · competition planned</text>
+          <path class="edge" d="M380 545 H505"/>
+          <text class="small" x="442" y="535" text-anchor="middle">Results</text>
+          <rect class="box" x="505" y="500" width="285" height="90" rx="8"/>
+          <text x="647" y="532" text-anchor="middle">Frontend</text>
+          <text class="small" x="647" y="556" text-anchor="middle">Browser experience</text>
+          <text class="small" x="440" y="646" text-anchor="middle">The exchange has no dependency on website or competition code.</text>
         </svg>
       </div>
-      <figcaption>Public components live here; bot strategies live separately. *Funding checks are a first-slice recommendation.</figcaption>
+      <figcaption>Planned integration. Both APIs serve /health; trading stubs raise NotImplementedError.</figcaption>
     </figure>
   </section>
 
@@ -106,12 +109,12 @@
     <p class="number">02 / What each part does</p>
     <h2 id="roles-title">Small responsibilities, connected behavior</h2>
     <div class="parts">
-      <article><h3>API</h3><p>Authenticate clients. Accept orders. Return results.</p></article>
-      <article><h3>Matching</h3><p>Maintain the book. Match compatible bids and asks.</p></article>
-      <article><h3>Accounts</h3><p>Track cash, holdings, and the effects of trades.</p></article>
-      <article><h3>Market data</h3><p>Expose liquidity and prices formed by trades.</p></article>
-      <article><h3>Competition</h3><p>Rank period performance. Accounts never reset; scoring remains open.</p></article>
-      <article><h3>Bots</h3><p>Provide market activity under similar rules, with effectively unlimited money.</p></article>
+      <article><h3>Exchange API</h3><p>Expose trading and data contracts over HTTP.</p></article>
+      <article><h3>Authentication</h3><p>Credentials → identity and permissions.</p></article>
+      <article><h3>Trading</h3><p>Complete order operations; private account queries.</p></article>
+      <article><h3>Market data</h3><p>Public book, trades, and price observations.</p></article>
+      <article><h3>Website backend</h3><p>Health example runs independently. Competition will consume exchange data.</p></article>
+      <article><h3>Website frontend</h3><p>Present the participant experience in the browser.</p></article>
     </div>
   </section>
 
@@ -127,7 +130,7 @@
     <p class="muted">Proposed trading foundation: limit orders, partial fills, cancellation, and price-time priority. Detailed rules remain under discussion.</p>
   </section>
 
-  <footer><a href="development.md">Run &amp; develop</a> · <a href="../README.md">README</a> · <a href="index.md">Project wiki</a> · <a href="exchange-tradeoffs.md">Trading recommendations</a></footer>
+  <footer><a href="public-interfaces.md">Public interfaces</a> · <a href="development.md">Run &amp; develop</a> · <a href="../README.md">README</a> · <a href="index.md">Project wiki</a> · <a href="exchange-tradeoffs.md">Trading recommendations</a></footer>
 </main>
 </body>
 </html>

@@ -1,8 +1,26 @@
 # Wiki Update Log
 
+## 2026-11-07
+
+* **Absolute imports**: Converted package imports to absolute paths and configured Ruff TID252 to reject all relative imports in both Python projects. Recorded the convention in AGENTS.md and the interface/development guides.
+
 ## 2026-11-06
 
+* **Interface documentation**: Added concise one-line module, type, callable, health-route, and test docstrings; explicitly marked public interfaces as experimental and not finalized.
+
+* **Export convention**: Restricted __all__ to package initializers, removed redundant callable-module exports, and recorded the convention in AGENTS.md and the public interface guide.
+
+* **Quick verification policy**: Require Ruff lint and formatting even during fast iterations; keep tests focused and use configured CI after publication. Recorded the commands in AGENTS.md and development guidance.
+
+* **Public type ownership**: Moved dataclasses/enums into virtual_exchange.types, with auth/trading/market_data modules depending only on the standard library. Callable interfaces import those records; existing type import paths remain available through re-exports.
+
+* **Typed public results**: Replaced generic mapping returns with immutable dataclasses for identity, orders/fills, balances, instruments, and market observations. Core contracts stay framework independent; HTTP validation and trading behavior remain deferred.
+
+* **Backend example and package exports**: Moved trading callable bodies to interface.py and retained initializer exports. Added an independent health-only website backend, its own lock/tests/image, and CI/Compose checks for both apps. Frontend and competition remain unimplemented.
+
 * **Version baseline**: Audited official stable releases; updated Python, uv, GitHub Actions and package minimums, and refreshed the dependency lock. Retained exact runtime/tool versions for reproducible CI and container builds.
+
+* **Public application boundaries**: Moved the runnable package and build under exchange/, added callable authentication/trading/market-data stubs that fail explicitly, and website backend/frontend placeholders. Competition consumes exchange data outside the exchange package; internal implementation modules remain undefined. Updated commands, CI, containers, and diagrams.
 
 * **Runnable foundation**: Added the Python API scaffold and health route, documented package boundaries and development commands, local checks, GitHub Actions, and Docker/Compose support. Trading behavior remains unimplemented.
 

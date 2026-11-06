@@ -5,6 +5,10 @@ title: Competition and Rankings
 
 # Competition and rankings
 
+Competition belongs to the website backend. It consumes published exchange
+market/account data; exchange code has no ranking or period dependency. See
+[public interfaces](/public-interfaces.md).
+
 The competition runs continuously, with a continuous leaderboard and separate
 weekly, monthly, and yearly performance categories. Accounts continue without
 resets. Period rankings are intended to give new members a chance to compete.

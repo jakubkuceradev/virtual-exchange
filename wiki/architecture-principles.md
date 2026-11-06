@@ -1,89 +1,53 @@
 ---
-type: Proposal
-title: Deep and Orthogonal Module Boundaries
+type: Decision
+title: Public Module Boundaries
 ---
 
-# Deep and orthogonal module boundaries
+# Public module boundaries
 
-Status: broader exchange architecture remains a proposal. The initial Python
-API scaffolding layout is agreed and implemented; see
-[development setup](/development.md). The user requested application of deep
-modules and orthogonality to this project.
+The agreed scaffold separates exchange/ from website/backend/ and
+website/frontend/. It outlines public interfaces and leaves implementation
+modules undefined. See [public interfaces](/public-interfaces.md) for contracts
+and [development setup](/development.md) for source locations.
 
-Prefer interfaces that hide substantial complexity and boundaries that allow
-unrelated changes to stay local. Orthogonality does not remove the need for
-consistent order, reservation, and settlement changes.
+## Deep exchange boundary
 
-## Suggested starting structure
+Callers request complete order operations. The exchange will own validation,
+command ordering, matching, reservations, settlement, durable acceptance, and
+retry behavior behind that boundary. HTTP handlers must not coordinate private
+reserve/match/settle/save steps. Public placeholders describe these expectations;
+they implement none of this trading behavior yet.
 
-Start with one Python application and an exchange command boundary. Internal
-modules can share a process and a transaction; they need not become services.
-The conceptual boxes in [the overview](overview.html) represent responsibilities,
-not independent transactions or deployment units.
+Order state, balances, and executions must eventually be committed consistently
+before success. Merely sharing a process does not establish atomicity. Storage,
+recovery, and event delivery require a later behavioral design.
 
-| Boundary | Owns and hides | Example interface |
-| --- | --- | --- |
-| API and identity | HTTP parsing, credentials, account identity, response formatting | Translate authenticated requests to typed exchange commands |
-| Exchange | Command ordering, validation orchestration, atomic order/funds/trade updates, durable acceptance, retry results | submit_order, cancel_order, account/order queries |
-| Matching, internal to exchange | Price levels, queues, priority, partial fills, execution prices, self-trade rules | Process a sequenced order/cancel and produce a typed result |
-| Ledger and funding, internal to exchange | Available/reserved balances, settlement arithmetic, funding eligibility | Reserve, settle, release within the exchange transaction |
-| Persistence, behind exchange boundary | Transactions, record format, recovery representation | Commit a complete exchange transition and recover committed state |
-| Market data | Public book/trade views and their presentation | Snapshot now; sequenced updates later |
-| Competition | Valuation, period baselines, eligibility, score calculation | Rankings from committed account history and market observations |
-| Private bots | Trading strategy and any internal reference prices | Use the exchange API as clients |
+## Independent changes
 
-These are candidate responsibilities, not mandatory classes or generic plugin
-interfaces. Expose operations justified by the first slice; add abstractions
-when they hide real complexity. Domain contracts must still describe observable
-execution, cancellation, errors, and durability precisely.
+- Credential changes belong to exchange authentication and its HTTP adapter.
+- Matching and storage choices stay behind the public trading interface.
+- Starting allocations and unlimited bot money are exchange funding policy.
+- Valuation, scoring, and period rules belong to the website backend.
+- Public market observation/delivery behavior belongs to the market-data interface.
+- Website presentation changes belong to the frontend.
 
-## One consistency boundary
+The website consumes published exchange data rather than importing exchange
+internals or reading its database. The exchange never imports the website.
+There is no shared ORM/domain library or service framework in this scaffold.
 
-A submitted order requires coordinated funding checks/reservations, matching,
-settlement, residual order state, and persistence. Present these as one operation
-to callers. An API handler must not coordinate independent reserve/match/settle
-calls, and account effects must not rely on a best-effort asynchronous fill
-listener.
+## Reversibility and information hiding
 
-Durable state and any outward event records must agree before success is
-acknowledged. Read views may update after commit with an explicit freshness or
-sequence contract; they must be recoverable from durable history or snapshots.
-A projection's failure must not silently lose a completed trade.
+Each application owns its eventual dependencies, tests, and build configuration.
+Exchange and website backend have independent runnable health scaffolds today;
+frontend has no selected stack. Keep backend behavior minimal and defer frontend stack and domain schemas
+until callers need them. Public interfaces can grow into deep modules without prescribing internal
+classes, folders, or separate deployments.
 
-Keep deterministic transition logic separate from HTTP, database calls, and
-wall-clock access where practical. Assign sequence and accepted time at the
-exchange boundary. Select an initial storage strategy before implementation;
-an in-memory book and a database do not become atomic merely by sharing a
-process. Failed commits and restart reconstruction need explicit behavior.
+Each policy needs one authoritative owner. Reconsider a split if implementation
+requires duplicated rules or repeated caller coordination. Keep unavailable
+observations explicit rather than inventing successful zero values or fake data.
 
-## Orthogonality checks
+## References
 
-- Changing HTTP frameworks or authentication must not rewrite matching.
-- Replacing an order-book data structure must not change API order semantics.
-- Changing funding allocations or the unlimited-money policy must not change
-  price-time priority. Account funding policy owns the bot exception; matching
-  need not know strategy names or use an is_bot branch.
-- Changing weekly scoring must not affect order acceptance or settlement.
-- Adding WebSockets should reuse committed market facts rather than add a
-  second matching implementation.
-- Changing a bot strategy must not require exchange internals or direct database
-  writes.
-
-Share small domain contracts such as instrument, quantity, price, order ID,
-trade ID, and execution result. Do not expose mutable queues, ORM models, or
-internal event/storage formats as public API payloads. Avoid a generic shared
-utilities module becoming the owner of business rules.
-
-## First vertical slice
-
-Implement only enough API, exchange processing, ledger behavior, durable
-storage, and queries to demonstrate an accepted bid/ask producing a consistent
-execution. Rankings and bots can follow through the boundaries above without
-their complete interfaces being built in advance.
-
-## Principle references
-
-- [John Ousterhout, A Philosophy of Software Design (author's extract)](https://web.stanford.edu/~ouster/cgi-bin/aposd2ndEdExtract.pdf) — Deep interfaces and information hiding.
-- [The Pragmatic Programmer tips](https://pragprog.com/tips/) — Orthogonality as eliminating effects between unrelated things.
-
-The module boundaries and examples above are project-specific recommendations.
+- [Ousterhout's software-design extract](https://web.stanford.edu/~ouster/cgi-bin/aposd2ndEdExtract.pdf)
+- [The Pragmatic Programmer tips](https://pragprog.com/tips/)
