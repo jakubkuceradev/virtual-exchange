@@ -21,10 +21,11 @@ authentication details. See [Exchange and bots](/exchange-and-bots.md).
 
 ## Current status
 
-The repository currently contains project documentation and a conceptual HTML
-overview. No exchange implementation or deployment architecture has been agreed
-or implemented. The overview's boxes represent responsibilities, not prescribed
-services or package boundaries.
+The repository contains a Python API scaffold, a health endpoint, development
+checks, CI configuration, Docker/Compose support, and project documentation.
+Order handling, matching, settlement, market data, and rankings remain
+unimplemented. See [development setup](/development.md). The overview's boxes
+represent intended responsibilities, not separate deployed services.
 
 ## Conceptual responsibilities
 
