@@ -24,3 +24,6 @@ Order types, matching priority, execution-price rules, cancellation behavior,
 and the minimum result/query interface remain open. A limit-orders-only first
 version with resting unfilled quantities was suggested by the assistant, but
 has not been accepted by the user.
+
+See [realism and complexity analysis](/exchange-tradeoffs.md) for recommendations
+on these choices. They remain proposals pending agreement.

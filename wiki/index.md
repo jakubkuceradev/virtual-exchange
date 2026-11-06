@@ -13,6 +13,8 @@ Project scope, development priorities, and requirements maintained here; the REA
 - [Exchange and bots](exchange-and-bots.md) — Fictional assets, price formation, API expectations, and bot rules.
 - [Competition](competition.md) — Continuous accounts, period rankings, and undecided scoring rules.
 
+- [Exchange tradeoffs](exchange-tradeoffs.md) — Recommendations weighing first-slice realism against complexity; not yet agreed.
+
 ## System
 
 - [Authoring conventions](conventions.md) — How agents read, capture, and maintain project knowledge.
