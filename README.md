@@ -7,3 +7,4 @@ The project is currently in the planning stage.
 ## Documentation
 
 - [Project wiki](wiki/index.md) — Project scope, development priorities, exchange and bot requirements, and competition rules.
+- [Visual module overview](wiki/overview.html) — Conceptual interactions; open in a browser without a server or external dependencies.

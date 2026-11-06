@@ -21,12 +21,14 @@ authentication details. See [Exchange and bots](/exchange-and-bots.md).
 
 ## Current status
 
-The repository currently contains project documentation. No exchange
-implementation or deployment architecture has been agreed or implemented.
+The repository currently contains project documentation and a conceptual HTML
+overview. No exchange implementation or deployment architecture has been agreed
+or implemented. The overview's boxes represent responsibilities, not prescribed
+services or package boundaries.
 
 ## Conceptual responsibilities
 
-These are responsibilities to discuss, not committed services, packages, or deployment boundaries.
+These are responsibilities to discuss, not committed services, packages, or deployment boundaries. See [the visual overview](overview.html).
 
 | Responsibility | Intended role | Decision still needed |
 | --- | --- | --- |
@@ -39,6 +41,13 @@ These are responsibilities to discuss, not committed services, packages, or depl
 
 Persistence, recovery, and operational requirements have not yet been specified. A public-facing website and account-registration flow have not yet been defined.
 
+## Documentation styling
+
+Prefer dark styling inspired by the [Prague Quant Club website](https://praguequantclub.org/):
+near-black backgrounds, indigo accents, fine borders, and monospace labels.
+The HTML overview remains self-contained and works offline.
+
 ## Related documentation
 
 - [README](../README.md) — General project introduction.
+- [Visual overview](overview.html) — Offline module-flow diagram, responsibility summaries, and first vertical slice.
