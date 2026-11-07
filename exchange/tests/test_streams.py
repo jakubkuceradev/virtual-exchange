@@ -50,6 +50,7 @@ def api(exchange):
                 ("alice", identity()),
                 ("bob", identity("bob")),
                 ("trade-only", identity(grants=(Permission.TRADE,))),
+                ("unfunded", identity("carol")),
             ]
         }
     )
@@ -124,30 +125,53 @@ def test_websocket_events_describe_settled_trade(api):
 
 
 @pytest.mark.parametrize(
-    "subscription_request",
+    ("subscription_request", "code", "reason"),
     [
-        {"type": "subscribe", "channels": ["orders"]},
-        {"type": "subscribe", "channels": ["fills"], "token": "trade-only"},
-        {"type": "subscribe", "channels": ["book"], "token": "unknown-secret"},
-        {
-            "type": "subscribe",
-            "channels": ["orders"],
-            "token": "alice",
-            "account_id": "bob",
-        },
-        {"type": "order", "channels": ["book"]},
-        {"type": "subscribe", "channels": []},
-        {"type": "subscribe", "channels": ["book", "book"]},
+        (
+            {"type": "subscribe", "channels": ["orders"]},
+            4401,
+            "authentication_required",
+        ),
+        (
+            {"type": "subscribe", "channels": ["fills"], "token": "trade-only"},
+            4403,
+            "insufficient_scope",
+        ),
+        (
+            {"type": "subscribe", "channels": ["book"], "token": "unknown-secret"},
+            4401,
+            "invalid_token",
+        ),
+        (
+            {"type": "subscribe", "channels": ["orders"], "token": "unfunded"},
+            4403,
+            "account_not_provisioned",
+        ),
+        (
+            {
+                "type": "subscribe",
+                "channels": ["orders"],
+                "token": "alice",
+                "account_id": "bob",
+            },
+            1008,
+            "",
+        ),
+        ({"type": "order", "channels": ["book"]}, 1008, ""),
+        ({"type": "subscribe", "channels": []}, 1008, ""),
+        ({"type": "subscribe", "channels": ["book", "book"]}, 1008, ""),
     ],
 )
-def test_bad_subscriptions_close_without_secret_echo(api, subscription_request, caplog):
+def test_bad_subscriptions_close_without_secret_echo(
+    api, subscription_request, code, reason, caplog
+):
     with api.websocket_connect("/ws") as socket:
         caplog.set_level(logging.DEBUG)
         socket.send_json(subscription_request)
         with pytest.raises(WebSocketDisconnect) as error:
             socket.receive_json()
-        assert error.value.code == 1008
-        assert not error.value.reason
+        assert error.value.code == code
+        assert (error.value.reason or "") == reason
         assert "unknown-secret" not in caplog.text
 
 

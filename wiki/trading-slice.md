@@ -171,8 +171,11 @@ subscriber always accepts the next complete bundle, so multi-part bundles larger
 than 1 MiB are delivered rather than forcing reconnects. Initial immutable snapshots are sent directly in bounded
 parts while subsequent updates queue. Heartbeats every 10 seconds are queued behind
 earlier updates, so their baselines never run ahead of delivered sequences; they do
-not guarantee replay. Malformed protocols/auth failures close
-1008, oversized input 1009, and unavailable trading 1013. Closing delivery never
+not guarantee replay. Rejected credentials close 4401 and missing read grants or
+unprovisioned accounts close 4403, mirroring HTTP 401/403, with the stable error
+code (`authentication_required`, `invalid_token`, `insufficient_scope`,
+`account_not_provisioned`) as the close reason so clients can stop reconnecting.
+Malformed protocols close 1008, oversized input 1009, and unavailable trading 1013. Closing delivery never
 undoes a committed trade. Subscriber cleanup survives ASGI cancellation.
 
 The locked websockets runtime backend enables actual Uvicorn WebSockets; AnyIO

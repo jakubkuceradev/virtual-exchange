@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Client-actionable wire fixes**: Bearer failures now return `{"error": code}` like other exchange errors; `/account/snapshot` channel baselines are an object, matching WebSocket control messages; refused subscriptions close 4401/4403 with the error code as reason instead of the protocol-error 1008.
+
 * **Stream review fixes**: Subscriber limits now bound backlog rather than single bundles, so multi-part bundles over 1 MiB reach caught-up subscribers instead of forcing reconnects; heartbeats are queued behind earlier updates.
 
 * **REST review fixes**: Required canonical unsigned decimal amount strings, emitted plain decimal notation, added commit IDs to /book and /balances, and served /balances without copying order history.

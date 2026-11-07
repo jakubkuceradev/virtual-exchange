@@ -36,6 +36,21 @@ async def message(socket: WebSocket) -> dict:
     return value
 
 
+def rejection(error: Exception) -> tuple[int, str | None]:
+    """Map a refused subscription to a close code clients can act on.
+
+    4401/4403 mirror HTTP 401/403 so clients can stop reconnecting on credential
+    or grant failures; the reason is a stable code that never carries request values.
+    """
+    if isinstance(error, AuthenticationFailed):
+        return 4401, "invalid_token"
+    if isinstance(error, PermissionDenied):
+        return 4403, "insufficient_scope"
+    if isinstance(error, TradingError) and error.status in {401, 403}:
+        return 4000 + error.status, error.code
+    return 1008, None
+
+
 def register_streams(
     app: FastAPI, *, exchange: Exchange | None, authenticator: Authenticator
 ) -> None:
@@ -115,9 +130,10 @@ def register_streams(
                 raise StreamClosed(1013)
             for task in done:
                 task.result()
-        except AuthenticationFailed, PermissionDenied, TradingError:
+        except (AuthenticationFailed, PermissionDenied, TradingError) as error:
+            code, reason = rejection(error)
             try:
-                await socket.close(code=1008)
+                await socket.close(code=code, reason=reason)
             except RuntimeError, WebSocketDisconnect:
                 pass
         except (StreamClosed, TimeoutError) as error:
