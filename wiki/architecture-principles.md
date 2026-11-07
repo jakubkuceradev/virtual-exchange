@@ -6,9 +6,10 @@ title: Public Module Boundaries
 # Public module boundaries
 
 The agreed scaffold separates exchange/ from website/backend/ and
-website/frontend/. It outlines public interfaces and leaves implementation
-modules undefined. See [public interfaces](/public-interfaces.md) for contracts
-and [development setup](/development.md) for source locations.
+website/frontend/. It outlines public interfaces; the internal matching
+implementation is described in [matching core](/matching-core.md). See
+[public interfaces](/public-interfaces.md) for contracts and
+[development setup](/development.md) for source locations.
 
 ## Deep exchange boundary
 
@@ -21,6 +22,16 @@ they implement none of this trading behavior yet.
 Order state, balances, and executions must eventually be committed consistently
 before success. Merely sharing a process does not establish atomicity. Storage,
 recovery, and event delivery require a later behavioral design.
+
+## Matching and account integration
+
+The matching core owns book validation, matching, and cancellation independently
+of balances. Future complete trading operations must validate and reserve funds
+before matching, then consistently settle executions and release reservations.
+HTTP handlers must not coordinate these private steps. The first milestone is
+in-memory, resets on restart, and tests supplied eligible orders directly;
+account integration follows separately. It establishes no crash durability or
+atomicity guarantee for the future combined account/matching operation.
 
 ## Independent changes
 

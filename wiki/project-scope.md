@@ -28,8 +28,9 @@ backend and consumes exchange data; see [public interfaces](/public-interfaces.m
 The repository contains public-interface placeholders, a Python API scaffold,
 independent exchange/backend health endpoints, development
 checks, CI configuration, Docker/Compose support, and project documentation.
-Order handling, matching, settlement, market data, and rankings remain
-unimplemented. See [development setup](/development.md). The overview's boxes
+An internal [matching core](/matching-core.md) now handles sequential in-memory
+limit orders. Participant order handling, settlement, public market data, and
+rankings remain unimplemented. See [development setup](/development.md). The overview's boxes
 represent intended responsibilities, not separate deployed services.
 
 ## Conceptual responsibilities
@@ -40,7 +41,7 @@ The exchange/website public boundary is agreed. See [the visual overview](overvi
 | Responsibility | Intended role | Decision still needed |
 | --- | --- | --- |
 | Public API and authentication | Accept authenticated participant requests and expose exchange information | Transport, credentials, endpoints, limits, and bot permissions |
-| Order book and matching | Maintain bids and asks and produce executions | Order types, priority rules, execution-price rules, cancellation behavior |
+| Order book and matching | Implemented sequential in-memory limit orders; see [matching core](/matching-core.md) | Concurrency, persistence, additional order types |
 | Accounts and settlement | Represent balances, positions, and the effects of fills | Starting funds, asset allocation, borrowing, shorting, fees |
 | Market data | Expose quotes, order-book information, and trades | Data depth, history, streaming versus polling |
 | Website backend: competition and rankings | Rank participants continuously and by period from exchange data | Metrics, valuation, period boundaries, eligibility, bot inclusion |
