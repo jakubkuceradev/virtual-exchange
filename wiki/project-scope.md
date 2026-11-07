@@ -46,7 +46,9 @@ The exchange/website public boundary is agreed. See [the visual overview](overvi
 | Website backend: competition and rankings | Rank participants continuously and by period from exchange data | Metrics, valuation, period boundaries, eligibility, bot inclusion |
 | Private bot clients | Submit orders under essentially the same trading rules, with effectively unlimited money | Special authentication, funding mechanism, any other exceptions, and initial liquidity policy |
 
-Persistence, recovery, and operational requirements have not yet been specified. A public-facing website and account-registration flow have not yet been defined.
+Persistence, recovery, and operational requirements have not yet been specified.
+The [participant website](/website.md) should provide browser trading and a
+competition dashboard; detailed MVP features and registration remain open.
 
 ## Documentation styling
 

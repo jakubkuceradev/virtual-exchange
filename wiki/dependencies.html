@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Virtual Exchange — development dependencies</title>
+  <style>
+    :root { color-scheme: dark; --bg: #08090f; --panel: #10131d; --ink: #edf0fa; --muted: #abb3c9; --border: #30384e; --strong: #c4b5fd; --contract: #7dd3fc; --integration: #fbbf77; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 1280px; margin: auto; padding: 44px 24px; }
+    h1 { margin: 8px 0 12px; font-size: clamp(2rem, 5vw, 3.3rem); line-height: 1.1; letter-spacing: -.045em; }
+    h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    p { margin: 8px 0; }
+    .eyebrow { color: var(--strong); font: 12px/1.5 ui-monospace, monospace; letter-spacing: .13em; text-transform: uppercase; }
+    .intro { max-width: 850px; color: var(--muted); }
+    .status { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; margin-top: 12px; font-size: .85rem; color: var(--muted); }
+    fieldset { display: flex; flex-wrap: wrap; gap: 12px 28px; padding: 16px 0; margin: 20px 0 4px; border: 0; }
+    legend { font-size: .85rem; color: var(--muted); }
+    label { display: flex; gap: 9px; align-items: center; cursor: pointer; font-size: .9rem; }
+    input { accent-color: var(--strong); width: 16px; height: 16px; }
+    .sample { width: 38px; border-top: 4px solid var(--strong); }
+    .sample.contract { border-top: 2px dashed var(--contract); }
+    .sample.integration { border-top: 2px dotted var(--integration); }
+    figure { margin: 0; }
+    .diagram { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: radial-gradient(ellipse at 50% 0, #24204455, transparent 60%), var(--panel); }
+    svg { display: block; width: 100%; min-width: 900px; height: auto; }
+    svg text { fill: var(--ink); font-family: system-ui, sans-serif; font-size: 18px; }
+    svg .small { fill: var(--muted); font-size: 14px; }
+    svg .tag { fill: var(--strong); font: 12px ui-monospace, monospace; letter-spacing: 1px; }
+    .node { fill: #151b29; stroke: #46516d; stroke-width: 1.5; }
+    .core { fill: #201e37; stroke: #a78bfa; stroke-width: 1.8; }
+    .inner { fill: #30284a; stroke: #75658e; }
+    .bot { fill: #29221d; stroke: #987349; }
+    .edge { fill: none; stroke-linejoin: round; }
+    .tight .edge { stroke: var(--strong); stroke-width: 4; }
+    .contract-edge .edge { stroke: var(--contract); stroke-width: 2; stroke-dasharray: 9 6; marker-end: url(#contract-arrow); }
+    .integration-edge .edge { stroke: var(--integration); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; marker-end: url(#integration-arrow); }
+    svg .edge-label { font-size: 13px; paint-order: stroke; stroke: var(--panel); stroke-width: 7px; stroke-linejoin: round; }
+    .off { display: none; }
+    figcaption { color: var(--muted); font-size: .9rem; margin: 10px 0 24px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    article { border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    article p { color: var(--muted); font-size: .94rem; }
+    details { margin-top: 24px; padding: 16px 0; border-top: 1px solid var(--border); }
+    summary { cursor: pointer; color: var(--strong); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: .9rem; }
+    th, td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); }
+    a { color: var(--contract); text-underline-offset: 3px; }
+    footer { margin-top: 24px; font-size: .85rem; color: var(--muted); }
+    :focus-visible { outline: 2px solid var(--contract); outline-offset: 4px; }
+    @media (max-width: 760px) { main { padding: 28px 16px; } .cards { grid-template-columns: 1fr; } }
+    @media print { :root { color-scheme: light; --bg: white; --panel: white; --ink: #182136; --muted: #46516d; --border: #bec6d5; --strong: #6941a5; --contract: #12638c; --integration: #966023; } main { padding: 0; } .diagram { background: white; } svg { min-width: 0; } .node, .core, .inner, .bot { fill: #f3f3fa; } fieldset { display: none; } .off { display: inline; } .cards, figure { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Virtual Exchange / development planning</div>
+    <h1>What can move in parallel?</h1>
+    <p class="intro">Keep exchange correctness together. Develop consumers independently once their contracts are agreed. Line styles show how strongly areas constrain each other.</p>
+    <p class="status">Planning proposal · application boundaries are agreed; detailed contracts and this work split remain open. Today: health APIs and experimental stubs.</p>
+  </header>
+
+  <fieldset>
+    <legend>Show dependency types</legend>
+    <label><input type="checkbox" checked data-layer="tight"><span class="sample" aria-hidden="true"></span>Tight coupling — one consistency boundary</label>
+    <label><input type="checkbox" checked data-layer="contract-edge"><span class="sample contract" aria-hidden="true"></span>Contract dependency — agree before splitting</label>
+    <label><input type="checkbox" checked data-layer="integration-edge"><span class="sample integration" aria-hidden="true"></span>Integration dependency — can start with fixtures</label>
+  </fieldset>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1200 930" role="img" aria-labelledby="diagram-title diagram-desc">
+        <title id="diagram-title">Dependencies between proposed development areas</title>
+        <desc id="diagram-desc">Arrows point from a consumer to its prerequisite, not in the direction of data flow. Thick solid undirected lines connect matching, reservations and settlement, and durability and retries within one trading core. Dashed arrows show API dependence on the core and market data, market data dependence on committed core state, and competition dependence on public market and authorized account observations. Dotted arrows show bots depending on the API and market data, and frontend depending on the website backend. The table below lists every relationship.</desc>
+        <defs>
+          <marker id="contract-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--contract)"/></marker>
+          <marker id="integration-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="var(--integration)"/></marker>
+        </defs>
+
+        <rect class="core" x="360" y="40" width="480" height="280" rx="14"/>
+        <text class="tag" x="384" y="70">01 / TRADING CORE</text>
+        <text x="384" y="102">One owner for accepted state</text>
+        <rect class="inner" x="380" y="125" width="210" height="60" rx="8"/>
+        <text class="small" x="485" y="151" text-anchor="middle">Validation, matching</text>
+        <text class="small" x="485" y="172" text-anchor="middle">&amp; cancellation</text>
+        <rect class="inner" x="610" y="125" width="210" height="60" rx="8"/>
+        <text class="small" x="715" y="151" text-anchor="middle">Reservations</text>
+        <text class="small" x="715" y="172" text-anchor="middle">&amp; settlement</text>
+        <rect class="inner" x="460" y="225" width="280" height="54" rx="8"/>
+        <text class="small" x="600" y="257" text-anchor="middle">Durability, recovery &amp; retries</text>
+        <g class="tight">
+          <path class="edge" d="M590 155 H610 M485 185 V204 H545 V225 M715 185 V204 H655 V225"/>
+        </g>
+        <text class="small" x="600" y="303" text-anchor="middle">Internal components ≠ independent delivery lanes</text>
+
+        <g class="contract-edge">
+          <path class="edge" d="M225 410 V180 H360"/>
+          <text class="edge-label" x="75" y="285">Complete operations,</text>
+          <text class="edge-label" x="75" y="305">errors &amp; trusted identity</text>
+          <path class="edge" d="M975 410 V180 H840"/>
+          <text class="edge-label" x="995" y="275">Committed state,</text>
+          <text class="edge-label" x="995" y="295">sequence &amp; freshness</text>
+          <path class="edge" d="M390 466 H810"/>
+          <text class="edge-label" x="600" y="453" text-anchor="middle">Expose market queries / delivery</text>
+          <path class="edge" d="M1050 670 V526"/>
+          <text class="edge-label" x="1070" y="601">Market facts</text>
+          <path class="edge" d="M810 725 H700 V320"/>
+          <text class="edge-label" x="720" y="620">Authorized account</text>
+          <text class="edge-label" x="720" y="640">facts &amp; history*</text>
+        </g>
+        <g class="integration-edge">
+          <path class="edge" d="M225 670 V526"/>
+          <text class="edge-label" x="70" y="605">Orders &amp; credentials</text>
+          <path class="edge" d="M390 725 H430 V575 H880 V526"/>
+          <text class="edge-label" x="570" y="564" text-anchor="middle">Bot observations</text>
+          <path class="edge" d="M760 857 H975 V786"/>
+          <text class="edge-label" x="985" y="849">Website responses</text>
+        </g>
+
+        <rect class="node" x="60" y="410" width="330" height="116" rx="12"/>
+        <text class="tag" x="82" y="438">02 / EXCHANGE ACCESS</text>
+        <text x="82" y="470">Authentication &amp; HTTP API</text>
+        <text class="small" x="82" y="499">Own credentials and transport; delegate trades</text>
+
+        <rect class="node" x="810" y="410" width="330" height="116" rx="12"/>
+        <text class="tag" x="832" y="438">03 / MARKET DATA</text>
+        <text x="832" y="470">Queries &amp; delivery</text>
+        <text class="small" x="832" y="499">Book, trades, ticker; streaming scope open</text>
+
+        <rect class="node bot" x="60" y="670" width="330" height="116" rx="12"/>
+        <text class="tag" x="82" y="698">04 / PRIVATE REPOSITORY</text>
+        <text x="82" y="730">Bot strategies &amp; clients</text>
+        <text class="small" x="82" y="759">Funding &amp; inventory exceptions need agreement</text>
+
+        <rect class="node" x="810" y="670" width="330" height="116" rx="12"/>
+        <text class="tag" x="832" y="698">05 / WEBSITE BACKEND</text>
+        <text x="832" y="730">Competition &amp; rankings</text>
+        <text class="small" x="832" y="759">Valuation, eligibility, scoring &amp; periods</text>
+
+        <rect class="node" x="440" y="800" width="320" height="112" rx="12"/>
+        <text class="tag" x="462" y="828">06 / WEBSITE FRONTEND</text>
+        <text x="462" y="860">Participant experience</text>
+        <text class="small" x="462" y="888">Views, interaction &amp; unavailable states</text>
+      </svg>
+    </div>
+    <figcaption><strong>Arrow direction: consumer → prerequisite.</strong> Solid links are mutual coupling, without arrows. Dotted links still block live integration; fixtures allow earlier independent development. *Account observations must use published, authorized exchange interfaces, never its database. Their delivery route remains open. Browser trading routes are also undecided and omitted.</figcaption>
+  </figure>
+
+  <div class="cards">
+    <article><h2>Keep one trading lane</h2><p>An accepted order must leave orders, fills, balances and reservations consistent. Matching, settlement and recovery share that guarantee; separate folders do not make separate deliverables.</p></article>
+    <article><h2>Agree contracts, then split</h2><p>Access and data delivery can run alongside core work once inputs, errors, identity, retry semantics and committed observations have concrete examples.</p></article>
+    <article><h2>Build consumers against fixtures</h2><p>Competition calculations, frontend views and bots can start with agreed examples. Fixtures must include absent prices and missing history. Live acceptance still requires their upstream capabilities.</p></article>
+  </div>
+
+  <details>
+    <summary>Read the dependency list and contract gates</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Consumer / area</th><th>Prerequisite</th><th>Strength</th><th>Agreement needed</th></tr></thead>
+      <tbody>
+        <tr><td>Matching ↔ settlement ↔ recovery</td><td>Each other, inside trading core</td><td>Tight coupling</td><td>Atomic accepted state, command ordering, safe retries and restart behavior.</td></tr>
+        <tr><td>Authentication &amp; HTTP API</td><td>Trading core</td><td>Contract</td><td>Trusted account identity, order schema, result/error shapes, ownership and duplicate requests.</td></tr>
+        <tr><td>Authentication &amp; HTTP API</td><td>Market-data interface</td><td>Contract</td><td>Public query shapes and delivery transport. Market-data authentication policy remains open.</td></tr>
+        <tr><td>Market data</td><td>Trading core</td><td>Contract</td><td>Committed observations, snapshot consistency, sequence meaning and stream recovery if included.</td></tr>
+        <tr><td>Competition</td><td>Market data</td><td>Contract</td><td>Prices, freshness and history required by the chosen valuation policy.</td></tr>
+        <tr><td>Competition</td><td>Published account observations from exchange</td><td>Contract</td><td>Authorized balances and any historical account/funding facts required by scoring; retention and recovery.</td></tr>
+        <tr><td>Private bots</td><td>Authentication &amp; HTTP API</td><td>Integration</td><td>Order behavior, credentials, funding and inventory exceptions.</td></tr>
+        <tr><td>Private bots</td><td>Market data</td><td>Integration</td><td>Observation schemas, availability and polling/streaming behavior.</td></tr>
+        <tr><td>Website frontend</td><td>Website backend</td><td>Integration</td><td>Views, responses, authorization, absent/stale data states; browser trading route remains open.</td></tr>
+      </tbody>
+    </table></div>
+  </details>
+  <footer>Basis: <a href="architecture-principles.md">agreed boundaries</a> · <a href="public-interfaces.md">experimental interfaces</a> · <a href="development-priorities.md">priorities</a> · <a href="competition.md">competition questions</a> · <a href="index.md">wiki index</a>. Self-contained; no network or libraries required.</footer>
+</main>
+<script>
+  document.querySelectorAll('input[data-layer]').forEach(input => {
+    input.addEventListener('change', () => {
+      document.querySelectorAll('.' + input.dataset.layer).forEach(layer => {
+        layer.classList.toggle('off', !input.checked);
+      });
+    });
+  });
+</script>
+</body>
+</html>

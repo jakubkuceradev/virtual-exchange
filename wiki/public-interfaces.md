@@ -78,8 +78,21 @@ Reserve HTTP/Pydantic schemas for the transport boundary; this package contains
 framework-independent records, with no internal model hierarchy. Producers will supply timezone-aware timestamps. State/enumeration
 and input-validation rules remain provisional until the corresponding behavior
 is implemented. Records can be constructed for examples, but stubs never return
-fabricated instances. Authentication results do not contain credentials; public
-trades do not contain private account/order identifiers.
+fabricated instances. Authentication results do not contain credentials. Current
+public Trade placeholders omit account and order identifiers, but the agreed
+target now follows Coinbase's anonymous execution linkage: publish maker/taker
+order IDs, never private account identities. These provisional records need
+revision in the relevant implementation slice.
+
+The eventual participant submission API should acknowledge rejection or
+receipt/acceptance, not promise a final state with every fill in its response.
+The current SubmitOrderResult is an experimental callable shape, not a settled
+HTTP response. Keep internal synchronous matching outcomes separate from the
+external acknowledgment contract. Exchange-assigned order IDs and optional
+client IDs are distinct; request_id does not establish safe-retry semantics.
+Cancellation of filled/already-cancelled orders returns an error. Cancelled
+orders without fills need not remain queryable; internal retention is not a
+public history guarantee. See [Coinbase alignment](/coinbase-reference.md).
 
 ## Website interfaces
 

@@ -10,6 +10,33 @@ exchange-like public API simplified for ease of use. Authenticated participants
 submit bids and asks that match against other participants and bots.
 Compatibility with a particular existing exchange API has not been required.
 
+## Technical reference
+
+Use official Coinbase Exchange documentation as a primary reference for
+technical choices, including order lifecycle, matching, funding/holds,
+authentication, and market-data behavior. Consult the relevant documentation
+when specifying a choice; cite it and record deliberate simplifications or
+departures. Project requirements and agreed scope remain authoritative. This
+does not require Coinbase API compatibility or adoption of every feature or
+default policy.
+
+For the behaviors reviewed in [the reference comparison](/coinbase-reference.md),
+match Coinbase's self-trade default, cancellation semantics, order/client ID
+distinction, acceptance acknowledgment, and anonymous market-data linkage.
+Authentication is explicitly exempt and remains a project choice. This does
+not expand the first milestone beyond the agreed in-memory matching core.
+
+See the [reference comparison](/coinbase-reference.md) for verified alignment,
+deliberate differences, and documentation limits.
+
+- [Matching engine](https://docs.cdp.coinbase.com/exchange/concepts/matching-engine)
+  — Price-time priority, resting-price execution, and self-trade options.
+- [Trading rules](https://www.coinbase.com/en-gb/legal/trading_rules?locale=en-US)
+  — Order behavior and funding requirements.
+- [API authentication](https://docs.cdp.coinbase.com/exchange/rest-api/authentication)
+  and [WebSocket feed](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels)
+  — References for later interface decisions, not selected requirements.
+
 ## Assets and price formation
 
 Assets are fictional. The desired direction is for prices to be determined
@@ -40,7 +67,9 @@ would be a bot strategy input, distinct from an executed market price.
 
 ## Interfaces still to define
 
-API transport, credentials, endpoints, request limits, and bot-account
-identification remain open. Market-data depth, history, and streaming versus
+The [authentication milestone](/authentication.md) selects operator-provisioned
+bearer tokens, read/trade grants, and the same mechanism for bots. Exact trading
+endpoints, request limits, and bot funding/status details remain open.
+Market-data depth, history, and streaming versus
 polling are undecided, as are the initial participant interfaces. See
 [conceptual responsibilities](/project-scope.md#conceptual-responsibilities).

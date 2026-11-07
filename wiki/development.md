@@ -127,6 +127,18 @@ docker run --rm --name virtual-exchange-local -p 127.0.0.1:8000:8000 virtual-exc
 
 Stop that container from another terminal with `docker stop virtual-exchange-local`.
 
+## Deployment target (planned)
+
+The site will run at `quant.jakubkuceradev.cz` on the operator's existing ARM64 VM, shared with another
+Compose-managed site. A host-level Caddy reverse proxy routes hostnames to
+containers, and Cloudflare terminates public TLS in front of the VM. GitHub
+Actions will publish `linux/arm64` images to GHCR: `:main`/`:<sha>` on pushes to
+`main`, and branch/sha tags on manual runs from other branches, so unreviewed
+integration work can be test-deployed without moving `:main`. The planned
+`website` image serves the frontend and forwards the exchange API and WebSockets
+same-origin, making it the single public entry point. Deploying a new exchange
+image resets the in-memory market. Pull and restart on the VM stay manual.
+
 ## Layout and ownership
 
 | Location | Responsibility and status |

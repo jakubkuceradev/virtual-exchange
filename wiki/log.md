@@ -2,6 +2,68 @@
 
 ## 2026-11-07
 
+* **Deployment target**: Planned GHCR-published ARM64 images (exchange, website with same-origin API/WebSocket forwarding, website backend) run by Compose on the shared VM behind Caddy and Cloudflare. `main` pushes publish `:main`; manual runs publish branch tags for test deploys. VM pulls stay manual.
+
+* **Integration delivery base**: Browser integration now builds on a per-need branch merging the unreviewed frontend and exchange stacks, with draft PRs rebased onto `main` once both merge. Outcome restated as two people launching the website and trading against each other on one shared exchange.
+
+* **Browser integration spec complete**: Confirmed tab-memory-only tokens, same-origin exchange proxy routing, signed-out public market viewing, and unavailable states for unimplemented live features. No fixture fallback in live mode; behavioral scope is ready for architecture handoff.
+
+* **Browser integration scope**: Established token authentication, live Trade view, actual balances/holdings, and snapshot/reconnect/reset behavior as the next frontend-stacked integration feature. Assumes completed frontend/exchange contracts; valuation, rankings, registration, and email delivery stay separate. Browser-storage/routing/guest/demo choices remain open.
+
+* **Integration readiness**: Inspected feature branches: corrected matching and authentication are present, funded REST trading is committed, WebSocket work is uncommitted, and the website has a React foundation with sample data plus approved HTML designs. Updated branch-specific status; live trading UI, browser access/routing, and end-to-end verification remain integration work.
+
+* **Trading transport**: Confirmed the Coinbase-like split: REST order submission/cancellation and queries, WebSocket market/private activity updates. WebSocket order commands and FIX are outside the current milestone.
+
+* **Live trading updates**: Included WebSockets for public book/trade and private order/fill updates in the first end-to-end trading slice, alongside REST commands and queries. This supersedes the earlier streaming exclusion; delivery/recovery/authentication details remain under specification.
+
+* **Funded trading rules**: Agreed configured starting allocations restored on restart, fully funded spot trading without fees/borrowing/shorting, ordinary bot accounts, pre-order reservations, immediate settlement, and reservation releases for savings/cancellations/self-trade prevention. Trading/query and retry contracts remain open.
+
+* **Authentication delivered**: Verified bearer authentication, hashed configuration, permission checks, and `/identity` on the stacked authentication branch. Funding/reservations/settlement and authenticated trading/query endpoints remain separate specification work; persistence, streaming, website integration, and rankings stay outside the first end-to-end slice.
+
+* **Authentication spec complete**: Confirmed no automatic token expiry in v1 and multiple independently permissioned tokens per account. Individual token replacement/removal takes effect on restart without invalidating other configured tokens. Behavioral scope is ready for architecture handoff.
+
+* **Authentication scope**: Agreed operator-provisioned bearer tokens, read/trade grants, restart-loaded private configuration, shared participant/bot authentication, and an identity endpoint; website login is deferred. Email-delivered reusable authentication tokens are a possible v2, with lifecycle and email-to-identity rules still open.
+
+* **Coinbase behavioral alignment**: Adopted default decrement-and-cancel self-trade prevention, errors for terminal cancellation, distinct client/exchange IDs, acceptance acknowledgments, and anonymous public order linkage. Authentication remains independent. Updated provisional-interface expectations without expanding the matching-first milestone.
+
+* **Coinbase comparison**: Verified matching alignment and documented differences in terminal cancellation, self-trade defaults, IDs/retries, acknowledgment semantics, public execution linkage, book depth, credentials, and streaming. Public documentation does not establish Coinbase's internal architecture or crash guarantees; agreed project behavior is unchanged.
+
+* **Technical reference**: Selected official Coinbase Exchange documentation as a primary reference for technical choices. Cite relevant behavior and record deliberate departures; project scope takes precedence and API compatibility is not implied.
+
+* **Execution price**: Selected the matched resting order's limit price for each execution in the matching core.
+
+* **Matching rules**: Accepted price-time priority, partial fills/resting remainders, cancellation outcomes, exact tick/lot validation, lifetime duplicate-ID rejection, owner-based self-trade prevention, sequential commands, and book/order/execution inspection. Execution price remains under discussion.
+
+* **Matching-first delivery**: Selected a standalone in-memory matching core tested with orders as the first milestone, with account integration in stacked PRs. Clarified the narrow matching/account outcome contract and retained the eventual complete trading-operation boundary.
+
+* **Minimal exchange milestone**: Established a simple in-memory limit-order book and matching as the first trading milestone. Reset-on-restart is acceptable; durability is deferred while in-process consistency remains required. Detailed trading rules are still under discussion.
+
+* **Visual MVP defaults**: Confirmed one asset against fictional cash, signed-in mocks with login/registration deferred, candlestick market and line performance charts, private competitor holdings, balanced density, and English. Branding should be minimal overall; club branding is allowed.
+
+* **API / Account content**: Confirmed display name/account ID, sample credential and copy/create/revoke controls, and documentation/example request for the visual mock. Real authentication remains undecided.
+
+* **Website mock views**: Confirmed Overview, Trade, Leaderboard, and API / Account for the first design review. Account-screen content and login/registration scope remain open.
+
+* **HTML mock interactions**: Confirmed lightweight navigation, leaderboard period switching, and sample order submit/cancel feedback with fixed chart/financial fixtures; styling and layout are the primary review focus.
+
+* **Dashboard content**: Confirmed account value, available cash, holdings, cash/percentage profit, performance chart, rank, nearby competitors, and continuous/weekly/monthly/yearly leaderboard views. Calculation rules remain unresolved.
+
+* **Website responsiveness**: Confirmed desktop-first design with usable mobile layouts; the complete trading view stacks vertically on phones without removing features.
+
+* **Website order entry**: Confirmed limit orders only for the visual MVP, with price/quantity entry and cancellable resting remainders. Market orders and a separate buy/sell-now action are excluded; detailed exchange rules remain separate.
+
+* **Trading view**: Confirmed the complete view by default, including price chart, public order book, buy/sell form, and own open orders and fills; layout and order-entry behavior remain open.
+
+* **Website visibility**: Confirmed the public order book and no direct access to other participants' individual trades. Anonymous market-feed presentation and holdings visibility remain open.
+
+* **Dashboard emphasis**: Confirmed equal prominence for personal financial performance and competitive standing on the website overview; layout and comparison metrics remain open.
+
+* **Website visual MVP**: Established HTML mocks for the first design-review PR, largely mocked backend interactions, and Prague Quant Club as the visual reference. Recorded the likely later framework/component-library round; detailed scope and technology remain open.
+
+* **Website audiences**: Established browser trading for casual participants and a competition dashboard for status, money, profit, statistics, and comparisons, including API-driven contenders. Detailed MVP scope and metrics remain open.
+
+* **Dependency diagram**: Added a self-contained HTML planning diagram with distinct coupling, contract, and integration lines. Recorded proposed work boundaries and unresolved contract gates without changing agreed architecture.
+
 * **Absolute imports**: Converted package imports to absolute paths and configured Ruff TID252 to reject all relative imports in both Python projects. Recorded the convention in AGENTS.md and the interface/development guides.
 
 ## 2026-11-06

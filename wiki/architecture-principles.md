@@ -22,6 +22,24 @@ Order state, balances, and executions must eventually be committed consistently
 before success. Merely sharing a process does not establish atomicity. Storage,
 recovery, and event delivery require a later behavioral design.
 
+For the [first development milestone](/development-priorities.md), in-memory
+state that resets on restart is explicitly acceptable. Success in that milestone
+does not promise crash durability. Order operations must still leave orders,
+balances, and executions consistent during the running process.
+
+## Matching and accounts
+
+The matching core can be developed independently of accounts. It accepts orders
+whose funding has already been validated and reserved by its eventual caller;
+matching does not inspect balances. Matching outcomes supply the information
+account logic needs for settlement and reservation releases. These are separate
+responsibilities connected by a narrow contract, not independent financial
+operations. The complete trading operation must coordinate their effects.
+
+The first milestone tests matching with supplied orders and no account system;
+account integration follows in stacked PRs. This is an internal component
+boundary, not a new participant-facing API for bypassing funding checks.
+
 ## Independent changes
 
 - Credential changes belong to exchange authentication and its HTTP adapter.
