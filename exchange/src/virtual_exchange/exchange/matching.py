@@ -1,10 +1,22 @@
 """Sequential single-instrument matching, independent of funding and transport."""
 
+from collections import ChainMap
+from collections.abc import MutableMapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
+from virtual_exchange.amounts import (
+    Amounts,
+    OrderRejected,
+)
+from virtual_exchange.amounts import (
+    decimal as _decimal,
+)
+from virtual_exchange.amounts import (
+    units as _units,
+)
 from virtual_exchange.types import (
     BookLevel,
     Execution,
@@ -17,65 +29,60 @@ from virtual_exchange.types import (
 )
 
 
-class OrderRejected(ValueError):
-    """Reject invalid input or a terminal cancellation before changing state."""
-
-
 class OrderNotFound(KeyError):
     """Identify an order absent from this engine instance."""
-
-
-def _coefficient(value: Decimal) -> tuple[int, int]:
-    """Read an exact positive Decimal coefficient and exponent."""
-    parts = value.as_tuple()
-    coefficient = 0
-    for digit in parts.digits:
-        coefficient = coefficient * 10 + digit
-    return coefficient, int(parts.exponent)
-
-
-def _positive_decimal(value: object, name: str) -> Decimal:
-    if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
-        raise OrderRejected(f"{name} must be a finite positive Decimal")
-    return value
-
-
-def _units(value: Decimal, increment: Decimal) -> int:
-    coefficient, exponent = _coefficient(value)
-    step, step_exponent = _coefficient(increment)
-    difference = exponent - step_exponent
-    numerator = coefficient * 10 ** max(difference, 0)
-    denominator = step * 10 ** max(-difference, 0)
-    units, remainder = divmod(numerator, denominator)
-    if remainder:
-        raise OrderRejected("value must align with the configured increment")
-    return units
-
-
-def _decimal(units: int, increment: Decimal) -> Decimal:
-    coefficient, exponent = _coefficient(increment)
-    # Integer arithmetic and tuple construction never consult Decimal precision.
-    digits = Decimal(units * coefficient).as_tuple().digits
-    return Decimal((0, digits, exponent))
 
 
 class MatchingEngine:
     """Own a complete in-memory book; callers supply eligible orders sequentially."""
 
     def __init__(self, *, instrument: Instrument) -> None:
-        _positive_decimal(instrument.price_increment, "price_increment")
-        _positive_decimal(instrument.quantity_increment, "quantity_increment")
-        if (
-            not isinstance(instrument.instrument_id, str)
-            or not instrument.instrument_id
-        ):
-            raise OrderRejected("instrument_id must be a nonempty string")
+        Amounts(instrument)
         self._instrument = instrument
-        self._orders: dict[str, OrderSnapshot] = {}
+        self._orders: MutableMapping[str, OrderSnapshot] = {}
         # Insertion order is engine receipt order. Updating retains that priority.
         self._resting: dict[str, tuple[int, int]] = {}
+        # Aggregate open lots per (side, price ticks), maintained incrementally.
+        self._levels: dict[tuple[OrderSide, int], int] = {}
         self._executions: list[Execution] = []
         self._sequence = 0
+        # A candidate reads its parent's retained history without copying it.
+        self._parent: MatchingEngine | None = None
+        self._execution_offset = 0
+        self._base_sequence = 0
+        self._spent = False
+
+    def fork(self) -> MatchingEngine:
+        """Start a private candidate for a coordinated trading operation.
+
+        Retained history is overlaid rather than copied, so the cost is
+        proportional to open orders and price levels, not process lifetime.
+        """
+        if self._parent is not None or self._spent:
+            raise RuntimeError("a candidate cannot be forked")
+        candidate = MatchingEngine(instrument=self._instrument)
+        candidate._parent = self
+        candidate._orders = ChainMap({}, self._orders)
+        candidate._resting = self._resting.copy()
+        candidate._levels = self._levels.copy()
+        candidate._execution_offset = len(self._executions)
+        candidate._base_sequence = candidate._sequence = self._sequence
+        return candidate
+
+    def commit(self, candidate: MatchingEngine) -> None:
+        """Absorb a successful candidate forked from this unchanged engine."""
+        # Every effective command advances the sequence, so an unchanged
+        # sequence proves no other candidate committed after this fork.
+        if candidate._parent is not self or candidate._base_sequence != self._sequence:
+            raise RuntimeError("candidate does not extend this engine")
+        assert isinstance(candidate._orders, ChainMap)
+        self._orders.update(candidate._orders.maps[0])
+        self._resting = candidate._resting
+        self._levels = candidate._levels
+        self._executions.extend(candidate._executions)
+        self._sequence = candidate._sequence
+        candidate._parent = None
+        candidate._spent = True
 
     def submit(
         self,
@@ -90,13 +97,8 @@ class MatchingEngine:
         self._validate_id(account_id, "account_id")
         if client_order_id is not None:
             self._validate_id(client_order_id, "client_order_id")
-        if not isinstance(side, OrderSide):
-            raise OrderRejected("side must be an OrderSide")
-        ticks = _units(
-            _positive_decimal(price, "price"), self._instrument.price_increment
-        )
-        lots = _units(
-            _positive_decimal(quantity, "quantity"), self._instrument.quantity_increment
+        ticks, lots = Amounts(self._instrument).order(
+            side=side, price=price, quantity=quantity
         )
         order_id = str(uuid4())
         while order_id in self._orders:
@@ -120,21 +122,33 @@ class MatchingEngine:
         changed = []
         filled = 0
         prevented = 0
+        maker_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
+        # Only crossing levels can match; skip the scan when none exist.
+        crossing = any(
+            level_side == maker_side
+            and (
+                level_ticks <= ticks if side == OrderSide.BUY else level_ticks >= ticks
+            )
+            for level_side, level_ticks in self._levels
+        )
         # Stable sorting preserves receipt priority for equal-price makers.
         makers = sorted(
             (
                 (maker_id, maker_ticks, maker_lots)
                 for maker_id, (maker_ticks, maker_lots) in self._resting.items()
-                if self._orders[maker_id].side != side
-            ),
+                if (
+                    maker_ticks <= ticks
+                    if side == OrderSide.BUY
+                    else maker_ticks >= ticks
+                )
+                and self._orders[maker_id].side == maker_side
+            )
+            if crossing
+            else (),
             key=lambda maker: maker[1] if side == OrderSide.BUY else -maker[1],
         )
         for maker_id, maker_ticks, maker_lots in makers:
             if not remaining:
-                break
-            if (side == OrderSide.BUY and maker_ticks > ticks) or (
-                side == OrderSide.SELL and maker_ticks < ticks
-            ):
                 break
             maker = self._orders[maker_id]
             is_self_trade = maker.account_id == account_id
@@ -165,11 +179,17 @@ class MatchingEngine:
                 self._resting[maker_id] = (maker_ticks, maker_remaining)
             else:
                 del self._resting[maker_id]
+            self._adjust_level(maker_side, maker_ticks, -removed)
             if is_self_trade:
                 continue
             executions.append(
                 Execution(
-                    execution_id=str(len(self._executions) + len(executions) + 1),
+                    execution_id=str(
+                        self._execution_offset
+                        + len(self._executions)
+                        + len(executions)
+                        + 1
+                    ),
                     instrument_id=self._instrument.instrument_id,
                     maker_order_id=maker_id,
                     taker_order_id=order_id,
@@ -184,6 +204,7 @@ class MatchingEngine:
         self._orders[order_id] = order
         if remaining:
             self._resting[order_id] = (ticks, remaining)
+            self._adjust_level(side, ticks, remaining)
         self._executions.extend(executions)
         self._sequence += 1
         return MatchingResult(order, tuple(changed), tuple(executions))
@@ -193,7 +214,8 @@ class MatchingEngine:
         order = self.get_order(order_id=order_id)
         if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED):
             raise OrderRejected("order is already finished")
-        _, remaining = self._resting.pop(order_id)
+        ticks, remaining = self._resting.pop(order_id)
+        self._adjust_level(order.side, ticks, -remaining)
         order = replace(
             order,
             status=OrderStatus.CANCELLED,
@@ -203,6 +225,13 @@ class MatchingEngine:
         self._orders[order_id] = order
         self._sequence += 1
         return MatchingResult(order)
+
+    def _adjust_level(self, side: OrderSide, ticks: int, lots: int) -> None:
+        total = self._levels.get((side, ticks), 0) + lots
+        if total:
+            self._levels[side, ticks] = total
+        else:
+            del self._levels[side, ticks]
 
     def _snapshot(
         self, order: OrderSnapshot, *, remaining: int, filled: int, prevented: int
@@ -231,9 +260,8 @@ class MatchingEngine:
         """Aggregate remaining liquidity, best price first on each side."""
         bids: dict[int, int] = {}
         asks: dict[int, int] = {}
-        for order_id, (ticks, lots) in self._resting.items():
-            side_levels = bids if self._orders[order_id].side == OrderSide.BUY else asks
-            side_levels[ticks] = side_levels.get(ticks, 0) + lots
+        for (side, ticks), lots in self._levels.items():
+            (bids if side == OrderSide.BUY else asks)[ticks] = lots
 
         def levels(values: dict[int, int], *, reverse: bool) -> tuple[BookLevel, ...]:
             return tuple(
@@ -252,9 +280,29 @@ class MatchingEngine:
             observed_at=datetime.now(UTC),
         )
 
-    def list_executions(self) -> tuple[Execution, ...]:
-        """Return immutable execution history in matching order."""
-        return tuple(self._executions)
+    def list_open_orders(self) -> tuple[OrderSnapshot, ...]:
+        """Return resting orders in receipt order; terminal history is excluded."""
+        return tuple(self._orders[order_id] for order_id in self._resting)
+
+    def get_level(self, *, side: OrderSide, price: Decimal) -> Decimal:
+        """Return aggregate open quantity at one price level, zero when empty."""
+        ticks = _units(price, self._instrument.price_increment)
+        return _decimal(
+            self._levels.get((side, ticks), 0), self._instrument.quantity_increment
+        )
+
+    def list_executions(
+        self, *, start: int = 0, stop: int | None = None
+    ) -> tuple[Execution, ...]:
+        """Return immutable execution history in matching order, optionally sliced."""
+        history = self._executions
+        if self._parent is not None:
+            history = [*self._parent._executions, *self._executions]
+        return tuple(history[start:stop])
+
+    def count_executions(self) -> int:
+        """Return the number of executions retained by this instance."""
+        return self._execution_offset + len(self._executions)
 
     @staticmethod
     def _validate_id(value: str, name: str) -> None:
