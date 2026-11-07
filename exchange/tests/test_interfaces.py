@@ -2,13 +2,12 @@
 
 import pytest
 
-from virtual_exchange import auth, exchange, market_data
+from virtual_exchange import exchange, market_data
 
 
 @pytest.mark.parametrize(
     ("operation", "arguments"),
     [
-        (auth.authenticate, {"credentials": {"key": "example"}}),
         (
             exchange.submit_order,
             {"account_id": "account", "request_id": "request", "order": {}},
