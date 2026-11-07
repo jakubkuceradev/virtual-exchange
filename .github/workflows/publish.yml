@@ -1,0 +1,121 @@
+name: Publish images
+
+# Builds linux/arm64 images and publishes them to GHCR. Each image is pushed
+# under its immutable commit tag first; the moving tag (main, or the branch
+# slug for manual runs) is moved for all images only after every build
+# succeeded, so it never names a mismatched set. Checks remain the quality gate.
+#
+# An image is published when its build context has a Dockerfile at the
+# published commit, so main can publish the services it already contains
+# while a manual run from an integration branch publishes the full set.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io/jakubkuceradev/virtual-exchange
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      images: ${{ steps.plan.outputs.images }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: plan
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            refs/heads/main) tag=main ;;
+            refs/heads/*)
+              # Docker tag grammar; only main itself may ever move :main.
+              tag=$(printf '%s' "$REF_NAME" | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9._-]+/-/g; s/^[.-]+//' | cut -c1-128)
+              if [ "$tag" = main ]; then tag=branch-main; fi
+              test -n "$tag" ;;
+            *) echo "::error::Publish from a branch, not $REF"; exit 1 ;;
+          esac
+          images=$(
+            for image in exchange:exchange website-backend:website/backend website:website/frontend; do
+              context=${image#*:}
+              if [ -f "$context/Dockerfile" ]; then
+                jq -nc --arg name "${image%%:*}" --arg context "$context" '$ARGS.named'
+              fi
+            done | jq -sc .
+          )
+          test "$images" != "[]"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+          {
+            echo "Moving tag: \`$tag\`"
+            echo "Images: $(jq -r 'map(.name) | join(", ")' <<<"$images")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: build ${{ matrix.image.name }}
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    # A newer run for the same ref supersedes unfinished builds.
+    concurrency:
+      group: publish-build-${{ github.ref }}-${{ matrix.image.name }}
+      cancel-in-progress: true
+    strategy:
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.image.name }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+  promote:
+    needs: [plan, build]
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      packages: write
+    # Never interrupt a promotion halfway; newer runs queue behind it.
+    concurrency:
+      group: publish-promote-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Point the moving tag at this commit's images
+        env:
+          IMAGES: ${{ needs.plan.outputs.images }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          for image in $(jq -r '.[].name' <<<"$IMAGES"); do
+            docker buildx imagetools create \
+              --tag "$REGISTRY/$image:$TAG" "$REGISTRY/$image:$GITHUB_SHA"
+            echo "- \`$REGISTRY/$image:$TAG\` → \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          done
