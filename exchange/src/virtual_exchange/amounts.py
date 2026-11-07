@@ -5,6 +5,10 @@ from decimal import Decimal
 
 from virtual_exchange.types import Instrument, OrderSide
 
+# Bound digits and scale before integer conversion so hostile exponents or very
+# long coefficients cannot make exact arithmetic allocate huge integers.
+MAX_DIGITS = 38
+
 
 class OrderRejected(ValueError):
     """Reject invalid input or an unavailable order operation."""
@@ -12,6 +16,8 @@ class OrderRejected(ValueError):
 
 def coefficient(value: Decimal) -> tuple[int, int]:
     parts = value.as_tuple()
+    if len(parts.digits) > MAX_DIGITS:
+        raise OrderRejected("value has too many significant digits")
     result = 0
     for digit in parts.digits:
         result = result * 10 + digit
@@ -28,6 +34,14 @@ def units(value: Decimal, increment: Decimal) -> int:
     amount, exponent = coefficient(value)
     step, step_exponent = coefficient(increment)
     difference = exponent - step_exponent
+    if difference > MAX_DIGITS:
+        raise OrderRejected("value is outside the supported range")
+    if difference < -MAX_DIGITS:
+        # A nonzero coefficient below 10**MAX_DIGITS cannot be a multiple of the
+        # increment scaled by more than MAX_DIGITS decimal places.
+        if amount:
+            raise OrderRejected("value must align with the configured increment")
+        return 0
     result, remainder = divmod(
         amount * 10 ** max(difference, 0), step * 10 ** max(-difference, 0)
     )

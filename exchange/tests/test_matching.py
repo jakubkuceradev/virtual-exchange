@@ -404,3 +404,58 @@ def test_mixed_commands_conserve_quantities_and_book(engine):
         assert book.asks == tuple(BookLevel(p, asks[p]) for p in sorted(asks))
         if bids and asks:
             assert max(bids) < min(asks)
+
+
+def test_fork_overlays_history_and_commit_absorbs_only_successful_candidates():
+    engine = MatchingEngine(instrument=INSTRUMENT)
+    sell = engine.submit(
+        account_id="bob", side=OrderSide.SELL, price=D("100"), quantity=D("2")
+    )
+    discarded = engine.fork()
+    discarded.submit(
+        account_id="alice", side=OrderSide.BUY, price=D("100"), quantity=D("2")
+    )
+    assert engine.get_order(order_id=sell.order.order_id) == sell.order
+    assert engine.list_executions() == ()
+    assert engine.get_order_book().asks[0].quantity == D("2")
+
+    candidate = engine.fork()
+    result = candidate.submit(
+        account_id="alice", side=OrderSide.BUY, price=D("100"), quantity=D("1")
+    )
+    assert candidate.get_order(order_id=sell.order.order_id).remaining_quantity == 1
+    assert candidate.list_executions() == result.executions
+    engine.commit(candidate)
+    assert engine.list_executions() == result.executions
+    assert engine.get_order(order_id=result.order.order_id) == result.order
+    assert engine.get_level(side=OrderSide.SELL, price=D("100")) == D("1")
+    assert engine.list_open_orders() == (
+        engine.get_order(order_id=sell.order.order_id),
+    )
+
+    stale = engine.fork()
+    newer = engine.fork()
+    newer.submit(
+        account_id="alice", side=OrderSide.BUY, price=D("100"), quantity=D("1")
+    )
+    engine.commit(newer)
+    stale.submit(account_id="alice", side=OrderSide.BUY, price=D("90"), quantity=D("1"))
+    with pytest.raises(RuntimeError):
+        engine.commit(stale)
+    with pytest.raises(RuntimeError):
+        newer.fork()
+    assert engine.list_executions(start=1)[0].execution_id == "2"
+    assert engine.count_executions() == 2
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["1E+999999999", "1E-999999999", "1" * 39],
+)
+def test_hostile_decimal_scale_or_digits_reject_before_arithmetic(value):
+    engine = MatchingEngine(instrument=INSTRUMENT)
+    with pytest.raises(OrderRejected):
+        engine.submit(
+            account_id="alice", side=OrderSide.BUY, price=D(value), quantity=D("1")
+        )
+    assert engine.get_order_book().bids == ()

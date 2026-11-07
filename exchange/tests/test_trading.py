@@ -17,6 +17,7 @@ from virtual_exchange.types import (
     AuthenticatedIdentity,
     Instrument,
     LimitOrder,
+    Liquidity,
     OrderSide,
     Permission,
 )
@@ -73,8 +74,11 @@ async def test_basic_trade():
                 identity=identity(account), order_id=receipt.order_id
             )
         ).status == "filled"
-    fills = await exchange.list_fills(identity=identity())
-    assert len(fills["data"]) == 1
+    (taker,) = (await exchange.list_fills(identity=identity()))["data"]
+    (maker,) = (await exchange.list_fills(identity=identity("bob")))["data"]
+    assert (maker.order_id, maker.liquidity) == (sell.order_id, Liquidity.MAKER)
+    assert (taker.order_id, taker.liquidity) == (buy.order_id, Liquidity.TAKER)
+    assert maker.trade_id == taker.trade_id
     trades = await exchange.list_trades()
     assert len(trades["data"]) == 1
     assert trades["data"][0].maker_order_id == sell.order_id

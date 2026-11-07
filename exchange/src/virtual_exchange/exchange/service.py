@@ -4,8 +4,8 @@ import asyncio
 import base64
 import hmac
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -24,9 +24,12 @@ from virtual_exchange.types import (
     AuthenticatedIdentity,
     Balance,
     Cancellation,
+    Execution,
     Fill,
     Instrument,
     LimitOrder,
+    Liquidity,
+    OrderBookSnapshot,
     OrderSnapshot,
     Permission,
     Trade,
@@ -47,19 +50,50 @@ class _State:
     engine: MatchingEngine
     ledger: Ledger
     orders: dict[str, OrderSnapshot]
-    fills: dict[str, tuple[Fill, ...]]
+    account_orders: dict[str, list[str]]
+    fills: dict[str, list[Fill]]
     clients: dict[tuple[str, str], str]
     sequence: int = 0
 
-    def fork(self) -> _State:
-        return _State(
-            self.engine.fork(),
-            self.ledger.fork(),
-            self.orders.copy(),
-            self.fills.copy(),
-            self.clients.copy(),
-            self.sequence,
-        )
+    def apply(self, candidate: _Candidate) -> None:
+        """Absorb a validated candidate; only container updates remain."""
+        if candidate.base is not self or candidate.sequence != self.sequence + 1:
+            raise RuntimeError("candidate does not extend the current state")
+        self.engine.commit(candidate.engine)
+        self.ledger = candidate.ledger
+        for order_id, snapshot in candidate.orders.items():
+            if order_id not in self.orders:
+                self.account_orders.setdefault(snapshot.account_id, []).append(order_id)
+            self.orders[order_id] = snapshot
+        for account, fills in candidate.fills.items():
+            self.fills.setdefault(account, []).extend(fills)
+        self.clients.update(candidate.clients)
+        self.sequence = candidate.sequence
+
+
+@dataclass(slots=True)
+class _Candidate:
+    """One command's private changes; discarded unless the whole command succeeds.
+
+    Retained history stays in the base state and is read through, so the cost of
+    a command depends on open orders, accounts and its own changes only.
+    """
+
+    base: _State
+    engine: MatchingEngine
+    ledger: Ledger
+    sequence: int
+    orders: dict[str, OrderSnapshot] = field(default_factory=dict)
+    fills: dict[str, list[Fill]] = field(default_factory=dict)
+    clients: dict[tuple[str, str], str] = field(default_factory=dict)
+    executions: tuple[Execution, ...] = ()
+
+    @classmethod
+    def of(cls, base: _State) -> _Candidate:
+        return cls(base, base.engine.fork(), base.ledger.fork(), base.sequence + 1)
+
+    def order(self, order_id: str) -> OrderSnapshot:
+        return self.orders.get(order_id) or self.base.orders[order_id]
 
 
 class Exchange:
@@ -87,7 +121,8 @@ class Exchange:
             MatchingEngine(instrument=instrument),
             Ledger(values),
             {},
-            dict.fromkeys(values, ()),
+            {account: [] for account in values},
+            {account: [] for account in values},
             {},
         )
 
@@ -139,7 +174,7 @@ class Exchange:
                 and (account, order.client_order_id) in self._state.clients
             ):
                 raise TradingError("duplicate_client_id", 409)
-            candidate = self._state.fork()
+            candidate = _Candidate.of(self._state)
             candidate.ledger.reserve(account, order.side, ticks, lots)
             result = candidate.engine.submit(
                 account_id=account,
@@ -148,7 +183,7 @@ class Exchange:
                 quantity=order.quantity,
                 client_order_id=order.client_order_id,
             )
-            candidate.sequence += 1
+            candidate.executions = result.executions
             for snapshot in (*result.changed_resting_orders, result.order):
                 candidate.orders[snapshot.order_id] = replace(
                     snapshot, commit_version=candidate.sequence
@@ -161,7 +196,10 @@ class Exchange:
                 maker = candidate.orders[execution.maker_order_id]
                 taker = candidate.orders[execution.taker_order_id]
                 candidate.ledger.settle(execution, maker, taker, self.amounts)
-                for snapshot in (maker, taker):
+                for snapshot, liquidity in (
+                    (maker, Liquidity.MAKER),
+                    (taker, Liquidity.TAKER),
+                ):
                     fill = Fill(
                         f"{execution.execution_id}:{snapshot.order_id}",
                         execution.execution_id,
@@ -171,10 +209,13 @@ class Exchange:
                         execution.price,
                         execution.quantity,
                         execution.executed_at,
+                        liquidity,
                         candidate.sequence,
                     )
-                    candidate.fills[snapshot.account_id] += (fill,)
-            candidate.ledger.reconcile(candidate.orders.values(), self.amounts)
+                    candidate.fills.setdefault(snapshot.account_id, []).append(fill)
+            candidate.ledger.reconcile(
+                candidate.engine.list_open_orders(), self.amounts
+            )
             receipt = Acceptance(
                 result.order.order_id,
                 order.client_order_id,
@@ -184,9 +225,9 @@ class Exchange:
             self._commit(candidate)
             return receipt
 
-    def _commit(self, candidate: _State) -> None:
-        """Replace state only after every financial effect and result is prepared."""
-        self._state = candidate
+    def _commit(self, candidate: _Candidate) -> None:
+        """Absorb state only after every financial effect and result is prepared."""
+        self._state.apply(candidate)
 
     async def cancel_order(
         self, *, identity: AuthenticatedIdentity, order_id: str
@@ -194,16 +235,17 @@ class Exchange:
         async with self._lock:
             account = self._account(identity, Permission.TRADE)
             order = self._owned(self._state, account, order_id)
-            candidate = self._state.fork()
+            candidate = _Candidate.of(self._state)
             try:
                 result = candidate.engine.cancel(order_id=order.order_id)
             except OrderRejected:
                 raise TradingError("order_finished", 409) from None
-            candidate.sequence += 1
             candidate.orders[order.order_id] = replace(
                 result.order, commit_version=candidate.sequence
             )
-            candidate.ledger.reconcile(candidate.orders.values(), self.amounts)
+            candidate.ledger.reconcile(
+                candidate.engine.list_open_orders(), self.amounts
+            )
             receipt = Cancellation(order.order_id, self.process_id, candidate.sequence)
             self._commit(candidate)
             return receipt
@@ -237,7 +279,8 @@ class Exchange:
                 self._state.sequence,
                 self._balances(account),
                 tuple(
-                    o for o in self._state.orders.values() if o.account_id == account
+                    self._state.orders[order_id]
+                    for order_id in self._state.account_orders[account]
                 ),
                 len(self._state.fills[account]),
                 self._baselines(account),
@@ -252,16 +295,18 @@ class Exchange:
 
     def _page(
         self,
-        records: tuple,
         *,
+        count: int,
+        fetch: Callable[[int, int], Sequence],
         scope: str,
         limit: int,
         cursor: str | None,
         high_watermark: int | None = None,
     ) -> dict:
+        """Slice one page of insertion-ordered history in O(page size)."""
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise TradingError("invalid_limit")
-        offset, high = 0, len(records) if high_watermark is None else high_watermark
+        offset, high = 0, count if high_watermark is None else high_watermark
         if cursor:
             try:
                 raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
@@ -278,7 +323,7 @@ class Exchange:
                     raise ValueError
             except ValueError, TypeError, KeyError, UnicodeError:
                 raise TradingError("invalid_cursor") from None
-        if type(high) is not int or not 0 <= high <= len(records):
+        if type(high) is not int or not 0 <= high <= count:
             raise TradingError("invalid_watermark")
         end = min(offset + limit, high)
         next_cursor = None
@@ -295,10 +340,11 @@ class Exchange:
             next_cursor = base64.urlsafe_b64encode(
                 payload + hmac.digest(self._cursor_key, payload, "sha256")
             ).decode()
+        data = tuple(fetch(offset, end))
         return {
             "process_id": self.process_id,
             "commit_id": self._state.sequence,
-            "data": records[offset:end],
+            "data": data,
             "next_cursor": next_cursor,
             "high_watermark": high,
         }
@@ -320,11 +366,15 @@ class Exchange:
                 "cancelled",
             }:
                 raise TradingError("invalid_status")
-            orders = tuple(
-                o for o in self._state.orders.values() if o.account_id == account
-            )
+            ids = self._state.account_orders[account]
             page = self._page(
-                orders, scope=f"orders:{account}:{status}", limit=limit, cursor=cursor
+                count=len(ids),
+                fetch=lambda start, stop: [
+                    self._state.orders[order_id] for order_id in ids[start:stop]
+                ],
+                scope=f"orders:{account}:{status}",
+                limit=limit,
+                cursor=cursor,
             )
             if status:
                 page["data"] = tuple(o for o in page["data"] if o.status == status)
@@ -340,8 +390,10 @@ class Exchange:
     ) -> dict:
         async with self._lock:
             account = self._account(identity, Permission.READ)
+            fills = self._state.fills[account]
             return self._page(
-                self._state.fills[account],
+                count=len(fills),
+                fetch=lambda start, stop: fills[start:stop],
                 scope=f"fills:{account}",
                 limit=limit,
                 cursor=cursor,
@@ -354,29 +406,45 @@ class Exchange:
         async with self._lock:
             return self._balances(self._account(identity, Permission.READ))
 
+    async def get_balance_snapshot(
+        self, *, identity: AuthenticatedIdentity
+    ) -> tuple[int, tuple[Balance, ...]]:
+        """Return balances with the commit they describe."""
+        async with self._lock:
+            account = self._account(identity, Permission.READ)
+            return self._state.sequence, self._balances(account)
+
     async def list_instruments(self) -> tuple[Instrument, ...]:
         return (self.amounts.instrument,)
 
-    async def get_order_book(self):
+    async def get_order_book(self) -> OrderBookSnapshot:
+        """Return the aggregated book; its sequence is the commit it describes."""
         async with self._lock:
-            return self._state.engine.get_order_book()
-
-    def _trades(self) -> tuple[Trade, ...]:
-        return tuple(
-            Trade(
-                e.execution_id,
-                e.instrument_id,
-                e.price,
-                e.quantity,
-                e.executed_at,
-                e.maker_order_id,
-                e.taker_order_id,
-            )
-            for e in self._state.engine.list_executions()
-        )
+            book = self._state.engine.get_order_book()
+            return replace(book, sequence=self._state.sequence)
 
     async def list_trades(self, *, limit: int = 100, cursor: str | None = None) -> dict:
         async with self._lock:
+            engine = self._state.engine
             return self._page(
-                self._trades(), scope="trades", limit=limit, cursor=cursor
+                count=engine.count_executions(),
+                fetch=lambda start, stop: [
+                    _trade(e) for e in engine.list_executions(start=start, stop=stop)
+                ],
+                scope="trades",
+                limit=limit,
+                cursor=cursor,
             )
+
+
+def _trade(execution: Execution) -> Trade:
+    """Project an execution anonymously: exchange order IDs, never owners."""
+    return Trade(
+        execution.execution_id,
+        execution.instrument_id,
+        execution.price,
+        execution.quantity,
+        execution.executed_at,
+        execution.maker_order_id,
+        execution.taker_order_id,
+    )

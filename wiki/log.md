@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Funded exchange review fixes**: Bounded decimal digits/scale before exact arithmetic; made command cost independent of retained history through overlay candidates and paged history queries; added maker/taker `liquidity` to fills; book snapshots report their commit. History will move to storage with persistence instead of staying in memory.
+
 * **Matching result reason removed**: Dropped the unused `MatchingResult.cancellation_reason`; snapshot prevented/cancelled quantities already record why quantity was removed, for makers as well as incoming orders.
 
 * **Funded exchange operations**: Added app-owned coordinated funding, exact settlement, candidate commit isolation, private queries, operator allocations, and account-scoped client-ID reconciliation. Network adapters follow in stacked changes.

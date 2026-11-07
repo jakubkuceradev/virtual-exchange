@@ -48,11 +48,13 @@ class Ledger:
         self.total[buyer.account_id] = (buyer_cash - cash, buyer_asset + lots)
         self.total[seller.account_id] = (seller_cash + cash, seller_asset - lots)
 
-    def reconcile(self, orders: Iterable[OrderSnapshot], amounts: Amounts) -> None:
-        # Remaining quantities are authoritative: release execution savings and all
-        # removed quantities, leaving exactly the holds required by resting orders.
+    def reconcile(self, open_orders: Iterable[OrderSnapshot], amounts: Amounts) -> None:
+        # Holds are derived, not verified: open-order remainders are authoritative,
+        # which releases execution savings and all removed quantities and leaves
+        # exactly the holds resting orders require. The pass then rejects any
+        # candidate whose balances or holds would be negative or overcommitted.
         held = dict.fromkeys(self.total, (0, 0))
-        for order in orders:
+        for order in open_orders:
             lots = units(
                 order.remaining_quantity, amounts.instrument.quantity_increment
             )

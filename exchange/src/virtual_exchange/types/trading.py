@@ -13,6 +13,13 @@ class OrderSide(StrEnum):
     SELL = "sell"
 
 
+class Liquidity(StrEnum):
+    """Say whether an owned order provided resting liquidity or took it."""
+
+    MAKER = "maker"
+    TAKER = "taker"
+
+
 class OrderStatus(StrEnum):
     """Describe the current lifecycle state of an accepted order."""
 
@@ -74,6 +81,7 @@ class Fill:
     price: Decimal
     quantity: Decimal
     executed_at: datetime
+    liquidity: Liquidity
     commit_version: int = 0
 
 
