@@ -28,8 +28,8 @@ A valid identity missing an operation's grant receives 403,
 401 for malformed credentials; it does not implement a 400 invalid_request path.
 See [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3.1).
 
-`GET /health` ignores optional credentials, including invalid ones. Trading and
-market-data HTTP routes remain unavailable. Permission dependencies are tested
+`GET /health` ignores optional credentials, including invalid ones. Funded trading and public observations use the configured Exchange; see
+[funded trading](/trading-slice.md). Permission dependencies are tested
 with a test-only protected operation, not a production trading endpoint.
 
 `virtual_exchange.auth.Authenticator.authenticate(token=...)` returns the frozen
