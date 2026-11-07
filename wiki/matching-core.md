@@ -46,7 +46,7 @@ assert result.executions[0].price == Decimal("100")
   reads/cancellations raise `OrderNotFound`. Internal terminal snapshots remain
   inspectable, without promising eventual public history retention.
 - `MatchingResult` contains the command's order, changed resting orders, ordered
-  executions, and an optional cancellation reason. `Execution` identifies both
+  executions. `Execution` identifies both
   maker and taker orders. These are internal facts for future settlement, not
   public market-data records.
 - `get_order`, `get_order_book`, and `list_executions` return immutable snapshots.
@@ -62,9 +62,9 @@ assert result.executions[0].price == Decimal("100")
 - Status is OPEN or PARTIALLY_FILLED while remaining quantity is positive.
   An exhausted order is FILLED if all its quantity executed, otherwise CANCELLED.
   A reduced order can later execute its surviving remainder without erasing
-  its prevented quantity. `cancellation_reason` describes only the command's
-  terminal incoming/explicitly cancelled order; inspect maker quantities for
-  reductions on resting orders.
+  its prevented quantity. There is no separate cancellation reason: the
+  prevented and cancelled quantities on each snapshot, including changed makers,
+  record why quantity was removed.
 
 The engine owns matching state; callers never mutate book entries. Private book
 storage can be indexed later without changing the command contract. Thread

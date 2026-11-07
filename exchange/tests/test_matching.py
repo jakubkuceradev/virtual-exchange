@@ -13,7 +13,6 @@ from virtual_exchange.exchange.matching import (
 )
 from virtual_exchange.types import (
     BookLevel,
-    CancellationReason,
     Instrument,
     OrderSide,
     OrderStatus,
@@ -119,7 +118,6 @@ def test_multilevel_priority_and_partial_cancellation(
     cancelled = engine.cancel(order_id=result.order.order_id)
     assert_quantities(cancelled.order, filled="9", cancelled="1")
     assert cancelled.order.status == OrderStatus.CANCELLED
-    assert cancelled.cancellation_reason == CancellationReason.REQUESTED
     assert engine.list_executions() == executions
     assert engine.get_order(order_id=untouched.order_id) == untouched
 
@@ -166,9 +164,6 @@ def test_decrement_and_cancel_both_directions(
     )
     assert result.changed_resting_orders == (updated,)
     assert not result.executions and not engine.list_executions()
-    assert result.cancellation_reason == (
-        CancellationReason.SELF_TRADE if not result.order.remaining_quantity else None
-    )
 
 
 @pytest.mark.parametrize("maker_side", list(OrderSide))

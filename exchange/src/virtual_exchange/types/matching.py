@@ -3,16 +3,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from enum import StrEnum
 
 from virtual_exchange.types.trading import OrderSnapshot
-
-
-class CancellationReason(StrEnum):
-    """Explain why an accepted order's remainder was cancelled."""
-
-    REQUESTED = "requested"
-    SELF_TRADE = "self_trade"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,4 +27,3 @@ class MatchingResult:
     order: OrderSnapshot
     changed_resting_orders: tuple[OrderSnapshot, ...] = ()
     executions: tuple[Execution, ...] = ()
-    cancellation_reason: CancellationReason | None = None

@@ -10,7 +10,6 @@ from virtual_exchange.types.market_data import (
     Trade,
 )
 from virtual_exchange.types.matching import (
-    CancellationReason,
     Execution,
     MatchingResult,
 )
@@ -28,7 +27,6 @@ __all__ = [
     "AuthenticatedIdentity",
     "Balance",
     "BookLevel",
-    "CancellationReason",
     "Execution",
     "Fill",
     "Instrument",

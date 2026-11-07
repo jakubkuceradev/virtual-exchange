@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from virtual_exchange.types import (
     BookLevel,
-    CancellationReason,
     Execution,
     Instrument,
     MatchingResult,
@@ -187,8 +186,7 @@ class MatchingEngine:
             self._resting[order_id] = (ticks, remaining)
         self._executions.extend(executions)
         self._sequence += 1
-        reason = CancellationReason.SELF_TRADE if prevented and not remaining else None
-        return MatchingResult(order, tuple(changed), tuple(executions), reason)
+        return MatchingResult(order, tuple(changed), tuple(executions))
 
     def cancel(self, *, order_id: str) -> MatchingResult:
         """Cancel an open remainder; reject unknown or terminal orders unchanged."""
@@ -204,7 +202,7 @@ class MatchingEngine:
         )
         self._orders[order_id] = order
         self._sequence += 1
-        return MatchingResult(order, cancellation_reason=CancellationReason.REQUESTED)
+        return MatchingResult(order)
 
     def _snapshot(
         self, order: OrderSnapshot, *, remaining: int, filled: int, prevented: int
