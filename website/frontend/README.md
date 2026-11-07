@@ -1,49 +1,61 @@
 # Participant frontend
 
-The interactive React preview uses **React 19.3.1,
-TypeScript 7.0.2, Vite 8.3.6, and Mantine 9.7.5**. Versions were checked against
-the npm stable release tags on 2026-11-07 and are pinned in package.json and the
-npm lockfile. The approved HTML mock has been migrated into Overview, Trade, Leaderboard,
-and API / Account views. Navigation, limit orders/cancellation, period controls,
-and dummy credentials use disposable local state; reload resets the session.
+React 19.3.1, TypeScript 7.0.2, Vite 8.3.6 and headless Mantine 9.7.5 (pinned in
+package.json and the lockfile) implement the approved Overview, Trade,
+Leaderboard and API / Account views. Every view reads one data source
+(`useTrading()`), selected by build mode:
 
-## What is mocked and what is implemented
+- **Live** (default): connects to a running exchange through a same-origin
+  proxy. Public market data shows without a token; an API token entered on the
+  API / Account page unlocks your balances, orders and fills. The token stays
+  in tab memory only — reload to sign out.
+- **Mock** (`--mode mock`): the original disposable in-memory demo with sample
+  data, for design and isolated development work.
 
-The [component and module integration map](INTEGRATION.md) records every mock
-boundary and the working UI to retain. Source uses searchable `@mock-backend`,
-`@mock-frontend`, and `@implemented-ui` annotations. All participant data/commands
-remain mocked; navigation, rendering, focus and browser clipboard behavior work.
+See the [integration map](INTEGRATION.md) for which features are exchange-backed
+and which exist only as samples (valuation, performance, rankings, key
+management show as unavailable in live mode).
 
-## Run the React application
+## Run against an exchange
 
-Use Node **26.13.0 LTS** (`nvm install` / `nvm use` in this directory):
+Use Node **26.13.0 LTS** (`nvm install` / `nvm use` in this directory). Start an
+exchange with private trading and token configuration (see
+[funded trading](../../wiki/trading-slice.md) and
+[authentication](../../wiki/authentication.md)), then:
 
 ```sh
 cd website/frontend
 npm ci
-npm run dev
+EXCHANGE_URL=http://127.0.0.1:8000 npm run dev   # default EXCHANGE_URL shown
 ```
 
-Open <http://127.0.0.1:5173/>. No backend, credentials, or environment variables
-are needed. The displayed account is a fixture, and there are no network service
-calls. The server binds to loopback and fails if its port is occupied.
+Open <http://127.0.0.1:5173/>. The dev server forwards `/exchange/*` HTTP and
+the `/exchange/ws` WebSocket to `EXCHANGE_URL`; the browser never talks to the
+exchange directly and nothing is compiled into the bundle. `npm run build` and
+`npm run preview` (port 4175) serve the same live app with the same proxy.
+
+## Run the mock
+
+```sh
+npm run dev:mock        # http://127.0.0.1:5173/, no backend needed
+npm run build:mock      # bundle into dist-mock/
+npm run preview:mock    # inspect dist-mock/ at http://127.0.0.1:4174/
+```
+
+## Checks
 
 ```sh
 npm run check          # Biome lint and formatting
-npm run typecheck     # strict TypeScript, including tooling and browser tests
-npm test              # shared state regressions for React and HTML reference
-npm run build         # typecheck and production bundle in dist/
+npm run typecheck      # strict TypeScript, including tooling and tests
+npm test               # unit tests: decimals, protocol, market/account, session, demo
 npx playwright install chromium
-npm run test:browser  # production preview, desktop and mobile Chromium
-npm run preview       # inspect dist/ at http://127.0.0.1:4174/
+npm run build:mock && npm run test:browser   # mock UI, desktop and mobile
+npm run build && npm run test:live           # real exchange + proxy (needs uv)
 ```
 
-Browser tests start and stop their own production preview on port 4174; build
-first and leave that port free. On Linux, browser system dependencies can be
-installed with `npx playwright install --with-deps chromium`.
-`npm run format` applies formatting to application/configuration/test sources.
-The frontend CI job installs the lockfile, checks formatting/lint, runs the
-shared state tests, builds, and runs desktop/mobile browser interaction checks.
+`test:live` generates synthetic tokens and private configuration in a temp
+directory, starts a fresh exchange per test on port 18000 and a live preview on
+port 4176, and drives isolated browser contexts. Leave those ports free.
 
 `src/main.tsx` owns the React root and `HeadlessMantineProvider`. Mantine CSS is
 never imported: global tokens/reset live in `src/global.css`, and component
@@ -53,8 +65,9 @@ licensed local design assets, so the build does not depend on `design/`; distrib
 `public/licenses/fonts/` and copied to the build. Biome handles lint/format independently of the
 TypeScript compiler; `tsc` checks types and Vite handles bundling.
 
-`src/demo.ts` owns the typed in-memory interaction model; `DemoContext.tsx`
-provides React state snapshots. The four view components render that state,
+`src/live/` owns the exchange client (REST, WebSocket protocol, market/account
+state, session); `src/trading/mock.ts` adapts the `src/demo.ts` in-memory model.
+The four view components render the active source,
 `Trading.tsx` owns the ticket/book/orders/fills controls, `Standings.tsx` owns
 period controls and public summary rows, and `Charts.tsx` renders accessible SVG.
 Mantine's headless buttons retain custom styles and native keyboard semantics.

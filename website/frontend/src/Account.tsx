@@ -5,15 +5,60 @@
  * @implemented-ui Profile layout and navigable documentation anchor.
  * Replace profile/session data and example/documentation with published API contracts.
  */
+import { Connect } from './Connect';
 import { Credentials } from './Credentials';
 import { cx } from './styles';
 import { useTrading } from './trading/context.tsx';
 
-/** @implemented-ui Profile from the source. @mock-frontend API example and documentation placeholders. */
+/** @mock-frontend The mock's reviewed placeholder request; live mode shows the real route. */
+const examples = {
+  mock: {
+    intro: 'An illustrative request for a future trading API.',
+    label: 'Provisional',
+    comment: '# Example only — endpoint is not implemented',
+    url: 'https://api.example.invalid/orders',
+    token: 'DEMO_KEY',
+    fields: [
+      ['instrument', 'QC-EUR'],
+      ['side', 'buy'],
+      ['limit_price', '110.00'],
+      ['quantity', '10'],
+    ],
+    link: 'Read provisional API notes ',
+    notesTitle: 'Provisional API documentation',
+    notes: [
+      'The request above illustrates a possible limit-order API. Its URL, credential scheme, and fields are placeholders. This preview is not connected to a trading endpoint.',
+      'API-driven participation is planned. Browser trading will not be required to compete.',
+    ],
+  },
+  live: {
+    intro: 'Place a limit order on the exchange from your own code.',
+    label: 'Exchange REST',
+    comment: '# Replace YOUR_TOKEN; use a new UUIDv4 for every order',
+    url: 'http://EXCHANGE_HOST:8000/orders',
+    token: 'YOUR_TOKEN',
+    fields: [
+      ['instrument_id', 'QC-EUR'],
+      ['side', 'buy'],
+      ['price', '100.00'],
+      ['quantity', '1'],
+      ['client_order_id', 'NEW_UUID_V4'],
+    ],
+    link: 'Read API notes ',
+    notesTitle: 'API notes',
+    notes: [
+      'Amounts are decimal strings aligned to the instrument increments (GET /instruments). A 201 response only acknowledges the order; follow it with GET /orders/client:{uuid} or the orders/fills WebSocket channels to see its outcome.',
+      'If a request times out, look the order up by its client_order_id before sending another — never resubmit under a new ID. Browser trading is not required to compete.',
+    ],
+  },
+} as const;
+
+/** @implemented-ui Profile from the source. */
 export function Account({ active }: { active: boolean }) {
-  const { identity, market, kind } = useTrading();
+  const { identity, market, kind, session } = useTrading();
   const name = identity?.name ?? 'Not connected';
   const instrument = market.instrument;
+  const example = examples[kind];
   return (
     <section
       data-view="account"
@@ -25,6 +70,7 @@ export function Account({ active }: { active: boolean }) {
       </h1>
       <div className={cx('account-grid')}>
         <div>
+          {session && <Connect session={session} />}
           <article className={cx('panel')}>
             <div className={cx('panel-heading')}>
               <h2>{'Account details'}</h2>
@@ -97,55 +143,35 @@ export function Account({ active }: { active: boolean }) {
                 {'</>'}
               </span>
             </div>
-            <p className={cx('muted')}>
-              {'An illustrative request for a future trading API.'}
-            </p>
+            <p className={cx('muted')}>{example.intro}</p>
             <div className={cx('code-heading')}>
               <span>{'EXAMPLE REQUEST'}</span>
-              <span className={cx('meta-label')}>{'Provisional'}</span>
+              <span className={cx('meta-label')}>{example.label}</span>
             </div>
             <pre>
               <code>
-                <span className={cx('syntax-comment')}>
-                  {'# Example only — endpoint is not implemented'}
-                </span>
-                {
-                  "\ncurl https://api.example.invalid/orders \\\n  -H 'Authorization: Bearer DEMO_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    "
-                }
-                <span className={cx('syntax-key')}>{'"instrument"'}</span>
-                {': '}
-                <span className={cx('syntax-value')}>{'"QC-EUR"'}</span>
-                {',\n    '}
-                <span className={cx('syntax-key')}>{'"side"'}</span>
-                {': '}
-                <span className={cx('syntax-value')}>{'"buy"'}</span>
-                {',\n    '}
-                <span className={cx('syntax-key')}>{'"limit_price"'}</span>
-                {': '}
-                <span className={cx('syntax-value')}>{'"110.00"'}</span>
-                {',\n    '}
-                <span className={cx('syntax-key')}>{'"quantity"'}</span>
-                {': '}
-                <span className={cx('syntax-value')}>{'"10"'}</span>
+                <span className={cx('syntax-comment')}>{example.comment}</span>
+                {`\ncurl ${example.url} \\\n  -H 'Authorization: Bearer ${example.token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{`}
+                {example.fields.map(([key, value], index) => (
+                  <span key={key}>
+                    {index ? ',\n    ' : '\n    '}
+                    <span className={cx('syntax-key')}>{`"${key}"`}</span>
+                    {': '}
+                    <span className={cx('syntax-value')}>{`"${value}"`}</span>
+                  </span>
+                ))}
                 {"\n  }'"}
               </code>
             </pre>
             <a className={cx('text-link')} href="#account/api-docs">
-              {'Read provisional API notes '}
+              {example.link}
               <span aria-hidden="true">{'↗'}</span>
             </a>
             <div id="api-docs" className={cx('api-notes')} tabIndex={-1}>
-              <h3>{'Provisional API documentation'}</h3>
-              <p>
-                {
-                  'The request above illustrates a possible limit-order API. Its URL, credential scheme, and fields are placeholders. This preview is not connected to a trading endpoint.'
-                }
-              </p>
-              <p>
-                {
-                  'API-driven participation is planned. Browser trading will not be required to compete.'
-                }
-              </p>
+              <h3>{example.notesTitle}</h3>
+              {example.notes.map((note) => (
+                <p key={note}>{note}</p>
+              ))}
             </div>
           </article>
         </div>
