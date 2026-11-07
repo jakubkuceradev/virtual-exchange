@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **REST review fixes**: Required canonical unsigned decimal amount strings, emitted plain decimal notation, added commit IDs to /book and /balances, and served /balances without copying order history.
+
 * **Funded exchange review fixes**: Bounded decimal digits/scale before exact arithmetic; made command cost independent of retained history through overlay candidates and paged history queries; added maker/taker `liquidity` to fills; book snapshots report their commit. History will move to storage with persistence instead of staying in memory.
 
 * **Matching result reason removed**: Dropped the unused `MatchingResult.cancellation_reason`; snapshot prevented/cancelled quantities already record why quantity was removed, for makers as well as incoming orders.

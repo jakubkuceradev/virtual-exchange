@@ -1,6 +1,7 @@
 """REST adapters invoke complete operations, never private financial steps."""
 
-from decimal import Decimal, InvalidOperation
+import re
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Request
@@ -22,6 +23,10 @@ from virtual_exchange.types import (
     Permission,
 )
 
+# Canonical unsigned decimal strings only: no exponents, signs, separators or
+# whitespace. Economic validation (increments, range) stays in the exchange.
+_AMOUNT = re.compile(r"(?:0|[1-9][0-9]{0,39})(?:\.[0-9]{1,40})?", re.ASCII)
+
 
 class LimitOrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -33,16 +38,15 @@ class LimitOrderRequest(BaseModel):
     type: Literal["limit"] = "limit"
 
     def order(self) -> LimitOrder:
-        try:
-            return LimitOrder(
-                self.instrument_id,
-                self.side,
-                Decimal(self.price),
-                Decimal(self.quantity),
-                self.client_order_id,
-            )
-        except InvalidOperation:
-            raise TradingError("invalid_order") from None
+        if not all(_AMOUNT.fullmatch(v) for v in (self.price, self.quantity)):
+            raise TradingError("invalid_order")
+        return LimitOrder(
+            self.instrument_id,
+            self.side,
+            Decimal(self.price),
+            Decimal(self.quantity),
+            self.client_order_id,
+        )
 
 
 def register_trading(
@@ -131,11 +135,12 @@ def register_trading(
 
     @app.get("/balances")
     async def balances(caller: Annotated[AuthenticatedIdentity, Depends(reader)]):
-        snapshot = await service().get_account_snapshot(identity=caller)
+        ex = service()
+        commit_id, balances = await ex.get_balance_snapshot(identity=caller)
         return {
-            "process_id": snapshot.process_id,
-            "commit_id": snapshot.commit_id,
-            "data": wire(snapshot.balances),
+            "process_id": ex.process_id,
+            "commit_id": commit_id,
+            "data": wire(balances),
         }
 
     @app.get("/account/snapshot")
@@ -150,7 +155,12 @@ def register_trading(
     @app.get("/book")
     async def book():
         ex = service()
-        return {"process_id": ex.process_id, "data": wire(await ex.get_order_book())}
+        snapshot = await ex.get_order_book()
+        return {
+            "process_id": ex.process_id,
+            "commit_id": snapshot.sequence,
+            "data": wire(snapshot),
+        }
 
     @app.get("/trades")
     async def trades(limit: int = 100, cursor: str | None = None):

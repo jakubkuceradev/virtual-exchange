@@ -82,7 +82,10 @@ def test_real_http_trade_and_anonymous_observations(api):
     assert "account_id" not in trade and "client_order_id" not in trade
     assert api.get("/book").json()["data"]["asks"] == []
     assert api.get("/instruments").status_code == 200
-    assert len(api.get("/fills", headers=headers()).json()["data"]) == 1
+    (taker_fill,) = api.get("/fills", headers=headers()).json()["data"]
+    (maker_fill,) = api.get("/fills", headers=headers("bob")).json()["data"]
+    assert (taker_fill["liquidity"], maker_fill["liquidity"]) == ("taker", "maker")
+    assert taker_fill["trade_id"] == maker_fill["trade_id"] == trade["trade_id"]
     assert (
         api.delete("/orders/" + buy.json()["order_id"], headers=headers()).status_code
         == 409
@@ -128,6 +131,16 @@ def test_client_lookup_lost_response_and_duplicate_no_effect(api):
         {"type": "market"},
         {"account_id": "bob"},
         {"side": "invalid"},
+        {"price": "1E+999999999"},
+        {"quantity": "1e-999999999"},
+        {"price": "1" * 60},
+        {"price": "1_000"},
+        {"price": " 100"},
+        {"price": "+100"},
+        {"price": "-100"},
+        {"price": ".5"},
+        {"quantity": "2."},
+        {"price": "0100"},
     ],
 )
 def test_bad_requests_no_effect_or_input_echo(api, changes):
@@ -217,3 +230,30 @@ def test_authentication_precedes_malformed_body(api):
     )
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_request"}
+
+
+def test_hostile_amounts_are_rejected_without_blocking_the_exchange(api):
+    for value in ("1E+999999999", "1E-999999999", "9" * 10_000):
+        response = api.post("/orders", headers=headers(), json=body(price=value))
+        assert response.json() == {"error": "invalid_order"}
+    assert api.get("/book").json()["data"]["bids"] == []
+
+
+def test_book_and_balances_report_the_commit_they_describe(api):
+    assert api.post("/orders", headers=headers(), json=body()).status_code == 201
+    book = api.get("/book").json()
+    balances = api.get("/balances", headers=headers()).json()
+    snapshot = api.get("/account/snapshot", headers=headers()).json()
+    assert book["commit_id"] == book["data"]["sequence"] == snapshot["commit_id"]
+    assert balances["commit_id"] == snapshot["commit_id"]
+    assert balances["data"] == snapshot["balances"]
+
+
+def test_amounts_serialize_in_plain_decimal_notation():
+    from virtual_exchange.serialization import wire
+
+    assert wire([Decimal("5E-8"), Decimal("1E-10"), Decimal("1E+2")]) == [
+        "0.00000005",
+        "0.0000000001",
+        "100",
+    ]

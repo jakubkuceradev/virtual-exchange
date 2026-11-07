@@ -102,8 +102,10 @@ Use one Uvicorn worker: state is process-local, not shared between workers.
 | GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines |
 | GET /instruments, /book, /trades | public, ignores optional credentials |
 
-POST requires instrument_id, side, price and quantity; decimal amounts must be
-strings. Optional type must be limit; optional client_order_id is a canonical
+POST requires instrument_id, side, price and quantity; amounts must be canonical
+unsigned decimal strings such as `100` or `0.5` (no exponents, signs, separators,
+whitespace or leading zeros). Responses use plain decimal notation, scaled to the
+relevant increment. /book and /balances include the commit_id they describe. Optional type must be limit; optional client_order_id is a canonical
 UUIDv4. Extra fields are rejected; client account selectors never establish identity.
 No final fills/status are included in the submission receipt. Commands may finish
 before the receipt arrives; a lost response can be reconciled with GET

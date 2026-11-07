@@ -8,7 +8,8 @@ from enum import Enum
 
 def wire(value):
     if isinstance(value, Decimal):
-        return str(value)
+        # Plain notation: str() would emit scientific forms such as "5E-8".
+        return format(value, "f")
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Enum):
