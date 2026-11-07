@@ -34,6 +34,29 @@ the `/exchange/ws` WebSocket to `EXCHANGE_URL`; the browser never talks to the
 exchange directly and nothing is compiled into the bundle. `npm run build` and
 `npm run preview` (port 4175) serve the same live app with the same proxy.
 
+### Two participants, two machines
+
+One operator runs the exchange reachable on the local network, with private
+configuration files kept outside the checkout:
+
+```sh
+EXCHANGE_AUTH_CONFIG=/private/auth.json \
+EXCHANGE_TRADING_CONFIG=/private/trading.json \
+uv run --project exchange --locked uvicorn virtual_exchange.api:create_app \
+  --factory --host 0.0.0.0 --port 8000
+```
+
+Each participant runs the website on their own machine and points it at that host:
+
+```sh
+EXCHANGE_URL=http://<operator-host>:8000 npm run dev
+```
+
+They open their own <http://127.0.0.1:5173/> and connect with their token. This
+is unencrypted HTTP for a trusted local network only — no TLS or production
+hosting. The live acceptance suite (`npm run test:live`) uses two isolated
+browser contexts on one machine, which exercises the same trading behavior.
+
 ## Run the mock
 
 ```sh

@@ -286,3 +286,47 @@ test('an unreachable exchange is reported, never replaced with fixtures', async 
   await h.reply('/instruments', instruments());
   assert.equal(h.sockets.length, 1);
 });
+
+test('a slow-client close (1013) is transient and resubscribes', async () => {
+  const h = harness();
+  const socket = await publicReady(h);
+  socket.drop(1013, '');
+  assert.equal(h.session.getView().market.status, 'stale');
+  await h.advance(1000);
+  assert.equal(h.sockets.length, 2);
+});
+
+test('backoff grows but stays bounded while the exchange is down', async () => {
+  const h = harness();
+  h.session.start();
+  let elapsed = 0;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await h.fail('/instruments');
+    // Advance in 1 s steps until the next attempt is issued; it must come
+    // within the 15 s cap.
+    let waited = 0;
+    while (!h.requests.some((r) => r.path === '/instruments')) {
+      await h.advance(1000);
+      waited += 1000;
+      assert.ok(waited <= 15_000, `attempt ${attempt} waited ${waited} ms`);
+    }
+    elapsed += waited;
+  }
+  assert.ok(elapsed > 60_000, 'later attempts back off');
+});
+
+test('stopping (unmount) closes both sockets and leaves no timers', async () => {
+  const h = harness();
+  const market = await publicReady(h);
+  void h.session.connect('alice-token');
+  await h.reply('/identity', { account_id: 'alice', permissions: ['read'] });
+  const account = h.sockets.at(-1);
+  account?.open();
+  h.session.stop();
+  assert.equal(market.closed, true);
+  assert.equal(account?.closed, true);
+  assert.equal(h.pendingTimers(), 0);
+  market.deliver(frame('book', 1, 'update', []));
+  await h.advance(60_000);
+  assert.equal(h.sockets.length, 2);
+});

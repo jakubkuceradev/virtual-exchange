@@ -8,8 +8,8 @@ title: Development and Project Layout
 The exchange has health and authenticated identity endpoints; the website
 backend has a health-only API. Each owns its dependencies, tests, and image.
 Funded REST and WebSocket trading are implemented; competition is deferred.
-The frontend has a React + TypeScript + Vite / headless Mantine preview with
-four interactive fixture views, based on the approved HTML mock.
+The React + TypeScript + Vite / headless Mantine frontend trades live against
+the exchange through a same-origin proxy, with the fixture demo kept as a mode.
 
 ## Local setup
 
@@ -47,20 +47,27 @@ loader is provided.
 ## Website frontend
 
 Use Node 26.13.0 LTS (pinned in website/frontend/.nvmrc). From website/frontend,
-run `npm ci` and `npm run dev`, then open http://127.0.0.1:5173/. The React
-preview includes Overview, Trade, Leaderboard, and API / Account with headless
-Mantine controls and disposable local state. It has no backend dependency or
-environment configuration. CSS Modules and local font
-assets preserve the reviewed design direction; Mantine CSS is not imported.
+run `npm ci`, then `npm run dev` (live; forwards `/exchange/*` to `EXCHANGE_URL`,
+default `http://127.0.0.1:8000`) or `npm run dev:mock` (fixture demo, no backend).
+Open http://127.0.0.1:5173/ and enter an exchange token on API / Account.
 
-`npm run check`, `npm test`, and `npm run build` validate lint/format, shared
-React/reference state, and strict types/production packaging. After building, install the
-Chromium browser with `npx playwright install chromium` and run
-`npm run test:browser`. These browser checks exercise all four views, keyboard
-navigation, order and credential flows, ranking periods, missing observations,
-and responsive layout.
-CI runs these frontend checks independently. See the
-[frontend guide](../website/frontend/README.md) for ports and local browser options.
+Two participants on separate machines can share one exchange. The operator binds
+the exchange to the LAN with private configs, for example
+`EXCHANGE_AUTH_CONFIG=/private/auth.json EXCHANGE_TRADING_CONFIG=/private/trading.json
+uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --factory
+--host 0.0.0.0 --port 8000`; each participant runs
+`EXCHANGE_URL=http://<operator-host>:8000 npm run dev` and opens their own
+loopback URL. This is plain HTTP for a trusted local network only: no TLS or
+production hosting. Two isolated browser contexts on one machine exercise the
+same behavior.
+
+`npm run check`, `npm run typecheck` and `npm test` (unit tests for decimals,
+protocol, market/account reducers, session recovery and commands) run without a
+browser. `npm run build:mock && npm run test:browser` runs the mock UI suite;
+`npm run build && npm run test:live` starts real exchanges with synthetic
+tokens behind the live preview proxy and drives two browser contexts through
+trading, reconnect, and restart. CI runs both. See the
+[frontend guide](../website/frontend/README.md) for ports.
 
 ## Website design preview
 
