@@ -1,0 +1,39 @@
+/* Mantine is headless: layout, focus treatment, and tokens belong to the app. */
+:root {
+  font-family: Inter, sans-serif;
+  color: #e9ebf1;
+  background: #07080c;
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --surface: #090a0f;
+  --border: #292b38;
+  --muted: #a5aabc;
+  --accent: #5b5bf0;
+  --mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 2px solid #a7a5ff;
+  outline-offset: 4px;
+}
+::selection {
+  background: #38367c;
+  color: white;
+}

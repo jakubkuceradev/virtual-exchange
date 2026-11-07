@@ -1,12 +1,61 @@
 # Participant frontend
 
-The first round is an interactive HTML design preview for Overview, Trade,
-Leaderboard, and API / Account. It uses fixed sample observations and local
-in-memory interactions. No exchange or competition backend is required.
+The React application is a buildable foundation using **React 19.3.1,
+TypeScript 7.0.2, Vite 8.3.6, and Mantine 9.7.5**. Versions were checked against
+the npm stable release tags on 2026-11-07 and are pinned in package.json and the
+npm lockfile. The reviewed HTML mocks remain the reference for the four-view
+migration; the React application currently implements only the account shell,
+fixture balances/holdings, and keyboard-accessible account tabs.
 
-The reviewed mocks are the baseline for **React + TypeScript + Vite with
-headless Mantine**, applying the design through custom CSS. The preserved HTML
-preview remains independent of the component implementation.
+## Run the React application
+
+Use Node **26.13.0 LTS** (`nvm install` / `nvm use` in this directory):
+
+```sh
+cd website/frontend
+npm ci
+npm run dev
+```
+
+Open <http://127.0.0.1:5173/>. No backend, credentials, or environment variables
+are needed. The displayed account is a fixture, and there are no network service
+calls. The server binds to loopback and fails if its port is occupied.
+
+```sh
+npm run check          # Biome lint and formatting
+npm run typecheck     # strict TypeScript, including tooling and browser tests
+npm test              # existing HTML mock state checks
+npm run build         # typecheck and production bundle in dist/
+npx playwright install chromium
+npm run test:browser  # production preview, desktop and mobile Chromium
+npm run preview       # inspect dist/ at http://127.0.0.1:4174/
+```
+
+Browser tests start and stop their own production preview on port 4174; build
+first and leave that port free. On Linux, browser system dependencies can be
+installed with `npx playwright install --with-deps chromium`.
+`npm run format` applies formatting to application/configuration/test sources.
+The frontend CI job installs the lockfile, checks formatting/lint, runs the
+mock-state tests, builds, and runs the browser smoke checks.
+
+`src/main.tsx` owns the React root and `HeadlessMantineProvider`. Mantine CSS is
+never imported: global tokens/reset live in `src/global.css`, and component
+styles use CSS Modules. Mantine style props and theme color schemes are not part
+of this setup. Fonts are imported from the preserved, licensed local design
+assets and bundled by Vite; distribution licenses are included under
+`public/licenses/fonts/` and copied to the build. Biome handles lint/format independently of the
+TypeScript compiler; `tsc` checks types and Vite handles bundling.
+
+The remaining Overview panels, Trade, Leaderboard, and API / Account views,
+application routing, and real backend integration are subsequent implementation
+work. The production build contains only the React app, not the reference HTML
+mocks or historical snapshots. No backend contract is implied by the fixture.
+
+## Reviewed HTML mocks
+
+Overview, Trade, Leaderboard, and API / Account use fixed sample observations and
+local in-memory interactions. They run independently of React and remain
+available during migration.
 
 ## Open the design preview
 
@@ -125,8 +174,8 @@ rejection, credential lifecycle, keyboard navigation, deep links/back navigation
 reduced motion, and no-trades states. All four views were checked for page
 horizontal overflow at 320, 390, 820, 1024, and 1440px; desktop/mobile screenshots
 were inspected. This is local browser evidence, not real backend integration or
-cross-browser/accessibility certification. Existing CI checks the Python apps
-and containers; it does not provide frontend/browser coverage.
+cross-browser/accessibility certification. The frontend CI also runs these state checks; the React browser smoke checks
+cover the new shell only, not the complete HTML reference.
 
 Source: `design/index.html` owns structure, `styles.css` owns presentation,
 `fixtures.js` owns sample observations, `demo.js` owns disposable interaction

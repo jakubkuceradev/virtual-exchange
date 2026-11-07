@@ -7,8 +7,8 @@ title: Development and Project Layout
 
 The exchange and website backend each have a runnable health-only API,
 independent dependencies, tests, and an image. Trading and competition behavior
-are not implemented. The frontend has an interactive HTML design preview; its
-React + TypeScript + Vite / unstyled Mantine conversion awaits visual feedback.
+are not implemented. The frontend has a React + TypeScript + Vite / headless Mantine foundation.
+The approved HTML mocks remain the reference for the remaining view migration.
 
 ## Local setup
 
@@ -41,6 +41,22 @@ Keep loopback binding for local development. Uvicorn reports invalid arguments
 and bind failures with nonzero exit status. No separate application configuration
 or environment-file loader exists yet.
 
+## Website frontend
+
+Use Node 26.13.0 LTS (pinned in website/frontend/.nvmrc). From website/frontend,
+run `npm ci` and `npm run dev`, then open http://127.0.0.1:5173/. The initial
+React shell displays fixture account data and headless Mantine tabs. It has no
+backend dependency or environment configuration. CSS Modules and local font
+assets preserve the reviewed design direction; Mantine CSS is not imported.
+
+`npm run check`, `npm test`, and `npm run build` validate lint/format, reference
+mock state, and strict types/production packaging. After building, install the
+Chromium browser with `npx playwright install chromium` and run
+`npm run test:browser`. These browser checks exercise tab keyboard behavior and
+responsive layout in the built app; they do not cover the full reference mocks.
+CI runs these frontend checks independently. See the
+[frontend guide](../website/frontend/README.md) for ports and local browser options.
+
 ## Website design preview
 
 From the repository root, use Python's static server:
@@ -58,7 +74,7 @@ The [frontend README](../website/frontend/README.md) links desktop/mobile
 screenshots and describes sample interactions and unresolved production policies.
 With Node.js 24+, run `node --test website/frontend/tests/demo.test.mjs` for the
 focused demo-state tests. These do not establish real exchange integration.
-Existing CI covers Python/container behavior, not the frontend or visual review.
+The HTML mock state checks also run in frontend CI; screenshot review is manual.
 
 ## Website backend
 
@@ -161,12 +177,14 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | exchange/Dockerfile, exchange/.dockerignore | Exchange image and build context |
 | website/backend/src/pqc_website/api.py | Independent website API factory and health example |
 | website/backend/tests/, pyproject.toml, uv.lock, Dockerfile | Backend-owned checks, dependencies, and image |
+| website/frontend/src/, package.json, package-lock.json | React/headless Mantine shell, independent npm dependencies and Vite build |
+| website/frontend/e2e/ | Production browser smoke checks |
 | website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
 | compose.yaml, .github/workflows/ | Shared local startup and CI |
 | wiki/ | Project knowledge and offline visual overview |
 
-The exchange and website backend run independently. The frontend preview has
-dependency-free Node state tests. The next round uses React, TypeScript, Vite,
-and unstyled Mantine; its package/build configuration will follow visual review.
+The exchange, website backend, and frontend build/run independently. The React
+foundation and HTML reference use fixtures; full dashboard migration and service
+integration remain pending.
 See [public interfaces](/public-interfaces.md) for operations and dependency
 boundaries. Internal exchange modules remain unspecified.

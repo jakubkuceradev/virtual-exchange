@@ -39,9 +39,9 @@ There is no shared ORM/domain library or service framework in this scaffold.
 
 Each application owns its eventual dependencies, tests, and build configuration.
 Exchange and website backend have independent runnable health scaffolds today;
-frontend currently offers a buildless HTML design preview. React, TypeScript,
-Vite, and unstyled Mantine are selected for the component-based round after
-visual review. Keep backend behavior minimal and defer production domain
+frontend owns a React/TypeScript/Vite foundation with headless Mantine and
+custom CSS Modules. Reviewed HTML mocks remain the migration reference; the
+initial React shell uses fixtures without backend integration. Keep backend behavior minimal and defer production domain
 schemas until callers need them. Public interfaces can grow into deep modules without prescribing internal
 classes, folders, or separate deployments.
 

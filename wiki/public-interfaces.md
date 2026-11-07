@@ -17,17 +17,16 @@ open. Both the exchange and website backend factories and health routes work.
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
 website/backend/      Independent health-only API; competition still planned
-website/frontend/     Interactive HTML design preview; React conversion planned
+website/frontend/     React foundation and approved HTML design reference
 ```
 
 The website backend consumes published exchange APIs/data. It imports no exchange
 implementation and reads no exchange database. The exchange has no dependency on
 competition or website code. Bots are external exchange API clients.
 The backend uses an independent FastAPI/Uvicorn package, tests, lockfile, and
-image. The selected frontend stack is React + TypeScript + Vite with unstyled
-Mantine for the next round. The first HTML design preview is implemented; its
-visual review precedes the component-based round. Use Mantine headless components
-with custom styling when converting the reviewed design.
+image. The frontend foundation uses React + TypeScript + Vite with
+HeadlessMantineProvider and custom CSS Modules. Its account shell uses fixture
+data; the four-view conversion from the approved HTML mocks remains pending.
 
 ## Exchange interfaces
 
@@ -89,7 +88,7 @@ trades do not contain private account/order identifiers.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions and website-backend responses | Four interactive HTML design views with sample data. React + TypeScript + Vite with unstyled Mantine is selected for the next round; production browser trading/data routing remains undecided. |
+| Frontend | Browser interactions and website-backend responses | React/headless Mantine account shell and four approved HTML reference views, all using fixtures. Full view migration and production browser trading/data routing remain pending. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account
