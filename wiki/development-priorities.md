@@ -11,8 +11,7 @@ other project capabilities incrementally.
 ## Foundation
 
 The first implementation change establishes package structure, a runnable API
-health endpoint, checks, CI, and Docker/Compose startup. Participant trading is
-still pending; see [development setup](/development.md).
+health endpoint, checks, CI, and Docker/Compose startup. Funded REST and WebSocket trading now follow the matching/auth foundations; see [development setup](/development.md).
 
 ## First trading slice
 
@@ -23,16 +22,12 @@ fills, cancellation errors for terminal orders, exchange-assigned IDs separate
 from optional client metadata, and decrement-and-cancel self-trade prevention.
 State resets with a new engine instance. See [matching core](/matching-core.md) for usage and rules.
 
-The eventual trading slice adds funding, reservations, settlement, and
-participant API access in follow-up PRs stacked above the matching core. The
+The funded slice implements reservations, settlement, authenticated REST and
+WebSocket observations in stacked PRs; see [funded trading](/trading-slice.md). The
 core does not require accounts, website, competition, or bots.
 
-## Unresolved requirements
+## Deferred milestones
 
-Account funding and participant API behavior need a separate specification.
-Starting allocations, credentials, endpoint shapes, retry behavior, persistence,
-and concurrent command ordering are not settled by the matching milestone.
-Complete ranking formulas and richer supporting features follow later.
-
-See [realism and complexity analysis](/exchange-tradeoffs.md) for recommendations;
-behavior beyond the agreed matching subset remains proposed.
+Persistence/recovery across restarts, website integration, rankings, deposits,
+withdrawals, margin and special bot funding remain deferred. Funded-slice
+REST/retry/stream contracts are recorded in [funded trading](/trading-slice.md).
