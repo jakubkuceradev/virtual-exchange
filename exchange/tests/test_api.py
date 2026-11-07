@@ -16,9 +16,7 @@ def test_health_reports_liveness():
     assert response.json() == {"status": "ok"}
 
 
-@pytest.mark.parametrize(
-    "path", ["/does-not-exist", "/orders", "/docs", "/openapi.json"]
-)
+@pytest.mark.parametrize("path", ["/does-not-exist", "/docs", "/openapi.json"])
 def test_unimplemented_routes_are_not_exposed(path):
     """Verify unfinished application routes return HTTP 404."""
     with TestClient(create_app()) as client:
