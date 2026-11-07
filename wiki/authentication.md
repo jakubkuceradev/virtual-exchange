@@ -17,13 +17,14 @@ automatic expiry, and live credential management are deferred.
 Any configured credential can inspect its identity, including trade-only and
 zero-grant tokens. Request account IDs cannot override authenticated identity.
 
-Private requests without a header receive 401 and
-`WWW-Authenticate: Bearer realm="exchange"`. Malformed, duplicate-header,
-unknown, or removed credentials receive the same generic body and 401, with
-`error="invalid_token"` in the challenge. Query/form credentials are unsupported.
+Private requests without a header receive 401,
+`{"error": "authentication_required"}` and `WWW-Authenticate: Bearer realm="exchange"`.
+Malformed, duplicate-header, unknown, or removed credentials receive 401 and the
+same generic `{"error": "invalid_token"}` body, with `error="invalid_token"` in
+the challenge. Query/form credentials are unsupported.
 Scheme matching is case-insensitive; token matching is exact and case-sensitive.
-A valid identity missing an operation's grant receives 403 and a bearer
-`insufficient_scope` challenge naming the required scope. This project selects
+A valid identity missing an operation's grant receives 403,
+`{"error": "insufficient_scope"}` and a bearer challenge naming the required scope. This project selects
 401 for malformed credentials; it does not implement a 400 invalid_request path.
 See [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3.1).
 

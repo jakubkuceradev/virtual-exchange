@@ -4,7 +4,8 @@ import re
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from virtual_exchange.auth import (
     AuthenticationFailed,
@@ -18,6 +19,27 @@ _CHALLENGE = 'Bearer realm="exchange"'
 _BEARER = re.compile(r"Bearer +([A-Za-z0-9\-._~+/]+=*)", re.IGNORECASE | re.ASCII)
 
 
+class BearerError(Exception):
+    """Carry a stable error code and challenge without request values."""
+
+    def __init__(self, *, status: int, code: str, challenge: str) -> None:
+        self.status = status
+        self.code = code
+        self.challenge = challenge
+
+
+def register_auth_errors(app: FastAPI) -> None:
+    """Report bearer failures with the same {"error": code} body as other errors."""
+
+    @app.exception_handler(BearerError)
+    async def bearer_error(request: Request, error: BearerError) -> JSONResponse:
+        return JSONResponse(
+            {"error": error.code},
+            status_code=error.status,
+            headers={"WWW-Authenticate": error.challenge, "Cache-Control": "no-store"},
+        )
+
+
 def identity_dependency(
     authenticator: Authenticator,
 ) -> Callable[..., AuthenticatedIdentity]:
@@ -25,20 +47,16 @@ def identity_dependency(
 
     def authenticated_identity(request: Request) -> AuthenticatedIdentity:
         headers = request.headers.getlist("authorization")
-        challenge = _CHALLENGE
+        challenge, code = _CHALLENGE, "authentication_required"
         if headers:
-            challenge += ', error="invalid_token"'
+            challenge, code = f'{_CHALLENGE}, error="invalid_token"', "invalid_token"
             match = _BEARER.fullmatch(headers[0]) if len(headers) == 1 else None
             if match is not None:
                 try:
                     return authenticator.authenticate(token=match[1])
                 except AuthenticationFailed:
                     pass
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": challenge, "Cache-Control": "no-store"},
-        )
+        raise BearerError(status=401, code=code, challenge=challenge)
 
     return authenticated_identity
 
@@ -54,15 +72,12 @@ def permission_dependency(
         try:
             require_permission(identity=authenticated, permission=permission)
         except PermissionDenied:
-            raise HTTPException(
-                status_code=403,
-                detail="Insufficient permission",
-                headers={
-                    "WWW-Authenticate": (
-                        f'{_CHALLENGE}, error="insufficient_scope", scope="{permission.value}"'
-                    ),
-                    "Cache-Control": "no-store",
-                },
+            raise BearerError(
+                status=403,
+                code="insufficient_scope",
+                challenge=(
+                    f'{_CHALLENGE}, error="insufficient_scope", scope="{permission.value}"'
+                ),
             ) from None
         return authenticated
 

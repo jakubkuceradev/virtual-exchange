@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Response
 
 from virtual_exchange.auth import Authenticator
-from virtual_exchange.http_auth import identity_dependency
+from virtual_exchange.http_auth import identity_dependency, register_auth_errors
 from virtual_exchange.types import AuthenticatedIdentity
 
 
@@ -23,6 +23,7 @@ def create_app(*, authenticator: Authenticator | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    register_auth_errors(app)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

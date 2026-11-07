@@ -116,7 +116,9 @@ def test_bad_credentials_have_generic_challenges(authenticator, headers, caplog)
     with TestClient(create_app(authenticator=authenticator)) as client:
         response = client.get("/identity", headers=headers)
     assert response.status_code == 401
-    assert response.json() == {"detail": "Authentication required"}
+    assert response.json() == {
+        "error": "invalid_token" if headers else "authentication_required"
+    }
     assert response.headers["www-authenticate"] == CHALLENGE + (
         ', error="invalid_token"' if headers else ""
     )
@@ -180,7 +182,7 @@ def test_independent_grants_through_real_http_dependency(
             response.headers["www-authenticate"]
             == f'{CHALLENGE}, error="insufficient_scope", scope="{permission.value}"'
         )
-        assert response.json() == {"detail": "Insufficient permission"}
+        assert response.json() == {"error": "insufficient_scope"}
 
 
 def test_core_exact_tokens_immutable_snapshot_and_no_expiry(authenticator, monkeypatch):
