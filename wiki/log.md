@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Matching alignment**: Adopted decrement-and-cancel with explicit prevented/remaining/cancelled quantities, terminal-cancellation errors, and generated exchange IDs separate from optional client metadata. Updated acceptance examples and retained earlier executions and maker priority.
+
 * **Matching core**: Implemented the agreed sequential in-memory limit book, exact tick/lot arithmetic, immutable matching outcomes, cancellation, and cancel-newest self-trade prevention. Documented the internal contract and acceptance tests; account integration and participant trading remain deferred.
 
 * **Absolute imports**: Converted package imports to absolute paths and configured Ruff TID252 to reject all relative imports in both Python projects. Recorded the convention in AGENTS.md and the interface/development guides.

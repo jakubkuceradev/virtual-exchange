@@ -19,8 +19,9 @@ still pending; see [development setup](/development.md).
 The first milestone implements an in-memory matching core, exercised directly
 with supplied eligible orders. It supports one instrument, sequential limit
 orders, best-price then receipt-order priority, maker-price executions, partial
-fills, cancellation, and cancel-newest self-trade prevention. State resets with
-a new engine instance. See [matching core](/matching-core.md) for usage and rules.
+fills, cancellation errors for terminal orders, exchange-assigned IDs separate
+from optional client metadata, and decrement-and-cancel self-trade prevention.
+State resets with a new engine instance. See [matching core](/matching-core.md) for usage and rules.
 
 The eventual trading slice adds funding, reservations, settlement, and
 participant API access in follow-up PRs stacked above the matching core. The

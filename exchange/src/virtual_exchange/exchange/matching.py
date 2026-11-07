@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 from virtual_exchange.types import (
     BookLevel,
@@ -18,7 +19,7 @@ from virtual_exchange.types import (
 
 
 class OrderRejected(ValueError):
-    """Reject an invalid or duplicate command before changing state."""
+    """Reject invalid input or a terminal cancellation before changing state."""
 
 
 class OrderNotFound(KeyError):
@@ -80,17 +81,16 @@ class MatchingEngine:
     def submit(
         self,
         *,
-        order_id: str,
         account_id: str,
         side: OrderSide,
         price: Decimal,
         quantity: Decimal,
+        client_order_id: str | None = None,
     ) -> MatchingResult:
         """Validate then match at maker prices, resting any eligible remainder."""
-        self._validate_id(order_id, "order_id")
         self._validate_id(account_id, "account_id")
-        if order_id in self._orders:
-            raise OrderRejected("order_id has already been accepted")
+        if client_order_id is not None:
+            self._validate_id(client_order_id, "client_order_id")
         if not isinstance(side, OrderSide):
             raise OrderRejected("side must be an OrderSide")
         ticks = _units(
@@ -99,6 +99,9 @@ class MatchingEngine:
         lots = _units(
             _positive_decimal(quantity, "quantity"), self._instrument.quantity_increment
         )
+        order_id = str(uuid4())
+        while order_id in self._orders:
+            order_id = str(uuid4())
         now = datetime.now(UTC)
         order = OrderSnapshot(
             order_id=order_id,
@@ -110,11 +113,14 @@ class MatchingEngine:
             limit_price=_decimal(ticks, self._instrument.price_increment),
             status=OrderStatus.OPEN,
             accepted_at=now,
+            client_order_id=client_order_id,
+            remaining_quantity=_decimal(lots, self._instrument.quantity_increment),
         )
         remaining = lots
         executions = []
         changed = []
-        reason = None
+        filled = 0
+        prevented = 0
         # Stable sorting preserves receipt priority for equal-price makers.
         makers = sorted(
             (
@@ -132,24 +138,27 @@ class MatchingEngine:
             ):
                 break
             maker = self._orders[maker_id]
-            if maker.account_id == account_id:
-                reason = CancellationReason.SELF_TRADE
-                break
-            traded = min(remaining, maker_lots)
-            remaining -= traded
-            maker_remaining = maker_lots - traded
-            maker = replace(
+            is_self_trade = maker.account_id == account_id
+            removed = min(remaining, maker_lots)
+            remaining -= removed
+            maker_remaining = maker_lots - removed
+            maker_filled = _units(
+                maker.filled_quantity, self._instrument.quantity_increment
+            )
+            maker_prevented = _units(
+                maker.prevented_quantity, self._instrument.quantity_increment
+            )
+            if is_self_trade:
+                prevented += removed
+                maker_prevented += removed
+            else:
+                filled += removed
+                maker_filled += removed
+            maker = self._snapshot(
                 maker,
-                filled_quantity=_decimal(
-                    _units(maker.quantity, self._instrument.quantity_increment)
-                    - maker_remaining,
-                    self._instrument.quantity_increment,
-                ),
-                status=(
-                    OrderStatus.PARTIALLY_FILLED
-                    if maker_remaining
-                    else OrderStatus.FILLED
-                ),
+                remaining=maker_remaining,
+                filled=maker_filled,
+                prevented=maker_prevented,
             )
             self._orders[maker_id] = maker
             changed.append(maker)
@@ -157,6 +166,8 @@ class MatchingEngine:
                 self._resting[maker_id] = (maker_ticks, maker_remaining)
             else:
                 del self._resting[maker_id]
+            if is_self_trade:
+                continue
             executions.append(
                 Execution(
                     execution_id=str(len(self._executions) + len(executions) + 1),
@@ -164,42 +175,51 @@ class MatchingEngine:
                     maker_order_id=maker_id,
                     taker_order_id=order_id,
                     price=_decimal(maker_ticks, self._instrument.price_increment),
-                    quantity=_decimal(traded, self._instrument.quantity_increment),
+                    quantity=_decimal(removed, self._instrument.quantity_increment),
                     executed_at=now,
                 )
             )
-        if reason is not None:
-            status = OrderStatus.CANCELLED
-        elif not remaining:
-            status = OrderStatus.FILLED
-        elif remaining < lots:
-            status = OrderStatus.PARTIALLY_FILLED
-        else:
-            status = OrderStatus.OPEN
-        order = replace(
-            order,
-            filled_quantity=_decimal(
-                lots - remaining, self._instrument.quantity_increment
-            ),
-            status=status,
+        order = self._snapshot(
+            order, remaining=remaining, filled=filled, prevented=prevented
         )
         self._orders[order_id] = order
-        if remaining and reason is None:
+        if remaining:
             self._resting[order_id] = (ticks, remaining)
         self._executions.extend(executions)
         self._sequence += 1
+        reason = CancellationReason.SELF_TRADE if prevented and not remaining else None
         return MatchingResult(order, tuple(changed), tuple(executions), reason)
 
     def cancel(self, *, order_id: str) -> MatchingResult:
-        """Remove only an open remainder; terminal cancellation is a no-op."""
+        """Cancel an open remainder; reject unknown or terminal orders unchanged."""
         order = self.get_order(order_id=order_id)
         if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED):
-            return MatchingResult(order)
-        del self._resting[order_id]
-        order = replace(order, status=OrderStatus.CANCELLED)
+            raise OrderRejected("order is already finished")
+        _, remaining = self._resting.pop(order_id)
+        order = replace(
+            order,
+            status=OrderStatus.CANCELLED,
+            remaining_quantity=_decimal(0, self._instrument.quantity_increment),
+            cancelled_quantity=_decimal(remaining, self._instrument.quantity_increment),
+        )
         self._orders[order_id] = order
         self._sequence += 1
         return MatchingResult(order, cancellation_reason=CancellationReason.REQUESTED)
+
+    def _snapshot(
+        self, order: OrderSnapshot, *, remaining: int, filled: int, prevented: int
+    ) -> OrderSnapshot:
+        if remaining:
+            status = OrderStatus.PARTIALLY_FILLED if filled else OrderStatus.OPEN
+        else:
+            status = OrderStatus.CANCELLED if prevented else OrderStatus.FILLED
+        return replace(
+            order,
+            status=status,
+            filled_quantity=_decimal(filled, self._instrument.quantity_increment),
+            prevented_quantity=_decimal(prevented, self._instrument.quantity_increment),
+            remaining_quantity=_decimal(remaining, self._instrument.quantity_increment),
+        )
 
     def get_order(self, *, order_id: str) -> OrderSnapshot:
         """Return an immutable accepted order, including terminal orders."""
