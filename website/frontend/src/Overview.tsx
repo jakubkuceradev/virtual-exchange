@@ -1,38 +1,48 @@
 /**
- * Overview: presentation implemented, all financial/competition data mocked.
- * @mock-backend Balances, holdings, rank, nearby participants, and market snapshot.
- * @mock-frontend Fixed valuation/baseline and profit calculations are illustrative policies.
- * @implemented-ui Responsive metric/panel layout and navigation links.
- * Replace account/valuation/competition observations; retain reviewed presentation.
+ * Overview over the active TradingSource.
+ * @implemented-ui Responsive metric/panel layout; cash, holdings, reservations and
+ *   the market card come from the source.
+ * @mock-backend Valuation, profit, performance and standings exist only as sample
+ *   data; live mode shows them as unavailable rather than deriving new rules.
  */
-import { PerformanceChart } from './Charts';
-import { useDemo } from './DemoContext';
-import {
-  participantCount,
-  performance,
-  periods,
-  snapshot,
-} from './fixtures.ts';
+import { EmptyChart, PerformanceChart } from './Charts';
 import { Nearby } from './Standings';
 import { cx, money, number, signed } from './styles';
+import { change } from './Trade';
+import { accountMessage } from './Trading';
+import { useTrading } from './trading/context.tsx';
+import type { Decimal } from './trading/decimal.ts';
+import { add, cmp, mul, sub, toNumber } from './trading/decimal.ts';
 
-/** @mock-backend Account/competition/market observations. @mock-frontend Valuation and profit assumptions. */
+const abs = (value: Decimal) => value.replace(/^-/, '');
+
+/** @implemented-ui Account metrics from the source. @mock-backend Sample valuation/competition. */
 export function Overview({ active }: { active: boolean }) {
-  const { state, available, empty } = useDemo();
-  const { lastPrice } = state;
-  // Sample valuation: cash plus holdings at the latest execution price.
+  const { market, account, samples, identity } = useTrading();
+  const base = market.instrument?.baseAsset ?? '—';
+  const quote = market.instrument?.quoteAsset ?? '—';
+  const { lastPrice } = market;
+  const ready = account.status === 'ready' || account.status === 'stale';
+  const unavailable = ready ? '' : accountMessage(account, 'balances');
+  // Sample valuation only: cash plus holdings at the latest execution price.
   const holdingValue =
-    lastPrice == null
-      ? state.holdings
-        ? null
-        : 0
-      : state.holdings * lastPrice;
-  const total = holdingValue == null ? null : state.cash + holdingValue;
-  const profit = total == null ? null : total - snapshot.baseline;
-  const [latestWhole, latestCents] = money(
-    (performance.at(-1) ?? 0) * 100,
-  ).split('.');
-  const standing = periods.continuous;
+    !ready || !samples
+      ? null
+      : lastPrice == null
+        ? cmp(account.asset.total, '0') === 0
+          ? '0'
+          : null
+        : mul(account.asset.total, lastPrice);
+  const total =
+    ready && holdingValue != null
+      ? add(account.cash.total, holdingValue)
+      : null;
+  const profit = samples && total != null ? sub(total, samples.baseline) : null;
+  const gaining = profit != null && cmp(profit, '0') >= 0;
+  const latest = samples?.performance.at(-1) ?? 0;
+  const [latestWhole, latestCents] = money(latest.toFixed(2)).split('.');
+  const standing = samples?.periods.continuous;
+  const movement = change(market);
   return (
     <section
       data-view="overview"
@@ -46,30 +56,38 @@ export function Overview({ active }: { active: boolean }) {
         <article className={cx('metric')}>
           <span className={cx('label')}>{'TOTAL ACCOUNT VALUE'}</span>
           <div className={cx('metric-number')} data-value="total">
-            {total == null ? '—' : money(total)} <small>EUR</small>
+            {total == null ? '—' : money(total)} <small>{quote}</small>
           </div>
           <span className={cx('metric-note')}>
-            {'Cash + QC at the sample valuation'}
+            {samples
+              ? `Cash + ${base} at the sample valuation`
+              : 'Account valuation is not available yet'}
           </span>
         </article>
         <article className={cx('metric')}>
           <span className={cx('label')}>{'AVAILABLE CASH'}</span>
           <div className={cx('metric-number')} data-value="cash">
-            {money(available.cash)} <small>EUR</small>
+            {ready ? money(account.cash.available) : '—'} <small>{quote}</small>
           </div>
           <span className={cx('metric-note')} data-value="reserved">
-            {money(state.cash - available.cash)} EUR reserved in orders
+            {ready
+              ? `${money(account.cash.reserved)} ${quote} reserved in orders`
+              : unavailable}
           </span>
         </article>
         <article className={cx('metric')}>
-          <span className={cx('label')}>{'QC HOLDINGS'}</span>
+          <span className={cx('label')}>{`${base} HOLDINGS`}</span>
           <div className={cx('metric-number')} data-value="holdings">
-            {number(state.holdings)} <small>QC</small>
+            {ready ? number(account.asset.total) : '—'} <small>{base}</small>
           </div>
           <span className={cx('metric-note')} data-value="holding-value">
-            {lastPrice == null || holdingValue == null
-              ? 'No market valuation yet'
-              : `${money(holdingValue)} EUR at ${money(lastPrice)} EUR / QC`}
+            {!ready
+              ? unavailable
+              : !samples
+                ? `${number(account.asset.available)} available · ${number(account.asset.reserved)} reserved in orders`
+                : lastPrice == null || holdingValue == null
+                  ? 'No market valuation yet'
+                  : `${money(holdingValue)} ${quote} at ${money(lastPrice)} ${quote} / ${base}`}
           </span>
         </article>
         <article className={cx('metric')}>
@@ -77,7 +95,7 @@ export function Overview({ active }: { active: boolean }) {
           <div
             className={cx(
               'metric-number',
-              profit != null && (profit >= 0 ? 'positive' : 'negative'),
+              profit != null && (gaining ? 'positive' : 'negative'),
             )}
             data-value="profit"
           >
@@ -85,22 +103,24 @@ export function Overview({ active }: { active: boolean }) {
               '—'
             ) : (
               <>
-                {profit >= 0 ? '+' : '−'}
-                {money(Math.abs(profit))}
+                {gaining ? '+' : '−'}
+                {money(abs(profit))}
               </>
             )}{' '}
-            <small>EUR</small>
+            <small>{quote}</small>
           </div>
           <span
             className={cx(
               'metric-note',
-              profit != null && (profit >= 0 ? 'positive' : 'negative'),
+              profit != null && (gaining ? 'positive' : 'negative'),
             )}
             data-value="profit-percent"
           >
-            {profit == null
-              ? 'Awaiting a market valuation'
-              : `${signed((profit / snapshot.baseline) * 100)} since joining`}
+            {!samples
+              ? 'Profit is not calculated yet'
+              : profit == null
+                ? 'Awaiting a market valuation'
+                : `${signed((toNumber(profit) / toNumber(samples.baseline)) * 100)} since joining`}
           </span>
         </article>
       </div>
@@ -113,13 +133,15 @@ export function Overview({ active }: { active: boolean }) {
             </div>
           </div>
           <div className={cx('chart-summary')}>
-            {empty ? (
+            {!samples || samples.empty || !standing ? (
               <strong>—</strong>
             ) : (
               <>
                 <strong>
                   {latestWhole}
-                  <span>.{latestCents} EUR</span>
+                  <span>
+                    .{latestCents} {quote}
+                  </span>
                 </strong>
                 <span className={cx('positive')}>
                   ↗ {signed(standing.profit)}
@@ -129,7 +151,19 @@ export function Overview({ active }: { active: boolean }) {
           </div>
           <p className={cx('small muted')}>{'Account value'}</p>
           <div id="performance-chart" className={cx('line-chart')}>
-            <PerformanceChart />
+            {!samples ? (
+              <EmptyChart
+                title="Performance history unavailable"
+                description="Personal performance is not tracked yet."
+              />
+            ) : samples.empty ? (
+              <EmptyChart
+                title="No performance history yet"
+                description="Your account history will appear here."
+              />
+            ) : (
+              <PerformanceChart series={samples.performance} />
+            )}
           </div>
           <div className={cx('panel-foot')}>
             <span className={cx('legend')}>
@@ -138,7 +172,9 @@ export function Overview({ active }: { active: boolean }) {
             </span>
             <span>
               {'Starting value '}
-              <strong>{`${number(snapshot.baseline / 100)} EUR`}</strong>
+              <strong>
+                {samples ? `${number(samples.baseline)} ${quote}` : '—'}
+              </strong>
             </span>
           </div>
         </article>
@@ -152,12 +188,12 @@ export function Overview({ active }: { active: boolean }) {
           <div className={cx('rank-summary')}>
             <div>
               <span className={cx('rank-number')}>
-                {empty ? (
+                {!samples || samples.empty || !standing ? (
                   '—'
                 ) : (
                   <>
                     {standing.rank}
-                    <span>/ {participantCount}</span>
+                    <span>/ {samples.participantCount}</span>
                   </>
                 )}
               </span>
@@ -165,13 +201,19 @@ export function Overview({ active }: { active: boolean }) {
             </div>
             <div className={cx('rank-return')}>
               <strong className={cx('positive')}>
-                {empty ? '—' : signed(standing.profit)}
+                {!samples || samples.empty || !standing
+                  ? '—'
+                  : signed(standing.profit)}
               </strong>
               <span className={cx('small muted')}>Return</span>
             </div>
           </div>
           <div className={cx('nearby-list')}>
-            <Nearby period={standing} />
+            <Nearby
+              period={standing ?? null}
+              empty={samples?.empty ?? false}
+              you={identity?.name ?? ''}
+            />
           </div>
           <div className={cx('panel-foot')}>
             <a href="#leaderboard" className={cx('text-link')}>
@@ -184,13 +226,15 @@ export function Overview({ active }: { active: boolean }) {
       <div className={cx('bottom-grid')}>
         <article className={cx('panel market-card')}>
           <div className={cx('asset-icon')} aria-hidden="true">
-            {'Q'}
+            {base.charAt(0)}
           </div>
           <div>
-            <span className={cx('label')}>{'QUANT COIN'}</span>
+            <span className={cx('label')}>
+              {(market.instrument?.baseName ?? base).toUpperCase()}
+            </span>
             <h3>
-              {'QC '}
-              <span className={cx('muted')}>{'/ EUR'}</span>
+              {`${base} `}
+              <span className={cx('muted')}>{`/ ${quote}`}</span>
             </h3>
             <p className={cx('small muted')}>
               {'One fictional asset. Your own strategy.'}
@@ -205,16 +249,24 @@ export function Overview({ active }: { active: boolean }) {
             ) : (
               <>
                 <strong>
-                  {money(lastPrice)} <span className={cx('muted')}>EUR</span>
+                  {money(lastPrice)}{' '}
+                  <span className={cx('muted')}>{quote}</span>
                 </strong>
-                <span className={cx('positive small')}>
-                  +5.34% · sample session
-                </span>
+                {movement && (
+                  <span
+                    className={cx(
+                      movement.startsWith('+') ? 'positive' : 'negative',
+                      'small',
+                    )}
+                  >
+                    {`${movement} · ${market.historyNote.toLowerCase()}`}
+                  </span>
+                )}
               </>
             )}
           </div>
           <a href="#trade" className={cx('button')}>
-            {'Trade QC '}
+            {`Trade ${base} `}
             <span aria-hidden="true">{'↗'}</span>
           </a>
         </article>

@@ -1,25 +1,26 @@
 /**
- * Application shell: mixed integration status. See ../INTEGRATION.md.
- * @implemented-ui Hash navigation, history, focus handling, header/footer links.
- * @mock-backend Signed-in identity comes from fixtures; App mounts DemoProvider unconditionally.
- * Replace session/identity wiring when authentication is connected; retain navigation/layout.
+ * Application shell. See ../INTEGRATION.md.
+ * @implemented-ui Hash navigation, history, focus handling, header identity from the
+ *   active TradingSource, and header/footer links.
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Account } from './Account';
-import { DemoProvider } from './DemoContext';
-import { participant } from './fixtures.ts';
 import { Leaderboard } from './Leaderboard';
 import { Overview } from './Overview';
 import { cx } from './styles';
 import { Trade } from './Trade';
+import { TradingProvider, useTrading } from './trading/context.tsx';
+import { useMockSource } from './trading/mock.ts';
 
 const views = ['overview', 'trade', 'leaderboard', 'account'] as const;
 function subscribe(onChange: () => void) {
   window.addEventListener('hashchange', onChange);
   return () => window.removeEventListener('hashchange', onChange);
 }
-/** @implemented-ui Navigation and shell. @mock-backend Fixture identity in the header. */
+/** @implemented-ui Navigation, shell, and header identity. */
 function Dashboard() {
+  const { identity } = useTrading();
+  const name = identity?.name ?? 'Not connected';
   const hash = useSyncExternalStore(subscribe, () => location.hash);
   const [requested, anchor] = hash.slice(1).split('/');
   const view = views.find((candidate) => candidate === requested) ?? 'overview';
@@ -92,10 +93,10 @@ function Dashboard() {
         <a
           href="#account"
           className={cx('identity')}
-          aria-label={`${participant.name}, account`}
+          aria-label={`${name}, account`}
         >
-          <span className={cx('avatar')}>{participant.initials}</span>
-          <span className={cx('identity-name')}>{participant.name}</span>
+          <span className={cx('avatar')}>{identity?.initials ?? '—'}</span>
+          <span className={cx('identity-name')}>{name}</span>
           <span className={cx('muted')} aria-hidden="true">
             {'⌄'}
           </span>
@@ -131,11 +132,11 @@ function Dashboard() {
     </>
   );
 }
-/** @mock-backend Composition currently always installs DemoProvider; no login/session integration. */
+/** @implemented-ui Installs the data source for the whole app. */
 export function App() {
   return (
-    <DemoProvider>
+    <TradingProvider useSource={useMockSource}>
       <Dashboard />
-    </DemoProvider>
+    </TradingProvider>
   );
 }

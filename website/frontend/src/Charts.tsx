@@ -1,16 +1,17 @@
 /**
- * Chart rendering works; observations and chart metadata are visual mocks.
- * @mock-backend Performance/candle series and missing-observation scenario come from fixtures.
- * @mock-frontend Fixed scales, current-price marker, dates, intervals, and descriptions match sample series.
- * @implemented-ui Accessible React SVG and empty-state rendering.
- * Replace series plus scales/labels/descriptions together; these are not live charts.
+ * Accessible SVG charts.
+ * @implemented-ui Candle chart renders any supplied candles with computed scales,
+ *   time labels, and a last-price marker; empty-state rendering.
+ * @mock-backend The personal performance series exists only as sample data.
+ * @mock-frontend Performance chart scale, dates, and description match the sample series.
  */
-import { useDemo } from './DemoContext';
-import { candles, performance } from './fixtures.ts';
 import { cx } from './styles';
+import { useTrading } from './trading/context.tsx';
+import { scaleOf, toNumber } from './trading/decimal.ts';
+import type { Chart } from './trading/types.ts';
 
-/** @implemented-ui Reusable empty-state renderer; its caller currently supplies a demo availability state. */
-function EmptyChart({
+/** @implemented-ui Reusable empty-state renderer. */
+export function EmptyChart({
   title,
   description,
 }: {
@@ -24,25 +25,17 @@ function EmptyChart({
     </div>
   );
 }
-/** @mock-backend Fixed account history. @mock-frontend Scale, dates, and descriptive text. @implemented-ui SVG rendering. */
-export function PerformanceChart() {
-  const { empty } = useDemo();
-  if (empty)
-    return (
-      <EmptyChart
-        title="No performance history yet"
-        description="Your account history will appear here."
-      />
-    );
+/** @mock-backend Sample account history only. @mock-frontend Scale, dates, and text. @implemented-ui SVG rendering. */
+export function PerformanceChart({ series }: { series: number[] }) {
   const left = 20,
     right = 545,
     top = 22,
     bottom = 195;
   const y = (value: number) =>
     bottom - ((value - 95000) / 45000) * (bottom - top);
-  const points = performance.map(
+  const points = series.map(
     (value, index) =>
-      `${left + (index / (performance.length - 1)) * (right - left)},${y(value)}`,
+      `${left + (index / (series.length - 1)) * (right - left)},${y(value)}`,
   );
   return (
     <svg
@@ -89,7 +82,7 @@ export function PerformanceChart() {
       />
       <circle
         cx={right}
-        cy={y(performance.at(-1) ?? 130450)}
+        cy={y(series.at(-1) ?? 130450)}
         r="4"
         fill="#b8b6ff"
         stroke="#202039"
@@ -110,60 +103,125 @@ export function PerformanceChart() {
     </svg>
   );
 }
-/** @mock-backend Fixed candle history. @mock-frontend Scale, times, and price marker. @implemented-ui SVG rendering. */
-export function CandleChart() {
-  const { empty } = useDemo();
-  if (empty)
+
+/** Human label for a candle interval, e.g. "15 min". */
+export function intervalLabel(interval: number) {
+  const minutes = Math.round(interval / 60000);
+  return minutes >= 60 && minutes % 60 === 0
+    ? `${minutes / 60} h`
+    : `${minutes} min`;
+}
+const time = (epoch: number) =>
+  new Date(epoch).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+/** A "nice" tick step (1, 2, 2.5, 5 × 10^k) giving roughly four intervals. */
+function niceStep(range: number) {
+  const raw = range / 4;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const factor = [1, 2, 2.5, 5, 10].find((f) => f * power >= raw) ?? 10;
+  return factor * power;
+}
+
+/** @implemented-ui Candles from the active source with computed scales and labels. */
+export function CandleChart({ chart }: { chart: Chart }) {
+  const { market } = useTrading();
+  const { candles, interval } = chart;
+  const first = candles[0];
+  const latest = candles.at(-1);
+  if (!first || !latest)
     return (
       <EmptyChart
         title="No executions yet"
         description="A price history will appear after the first trade."
       />
     );
+  const decimals = market.instrument
+    ? scaleOf(market.instrument.priceIncrement)
+    : 2;
+  const high = Math.max(...candles.map((candle) => toNumber(candle.high)));
+  const low = Math.min(...candles.map((candle) => toNumber(candle.low)));
+  const span = high - low || Math.max(high * 0.02, 10 ** -decimals * 10);
+  const step = niceStep(span);
+  const minimum = Math.floor(low / step) * step - step / 2;
+  let maximum = Math.ceil(high / step) * step;
+  if (maximum <= high) maximum += step / 2;
+  const ticks: number[] = [];
+  for (
+    let tick = Math.ceil(minimum / step) * step;
+    tick <= maximum;
+    tick += step
+  )
+    ticks.push(Number(tick.toFixed(10)));
   const top = 20,
-    bottom = 287;
-  const y = (value: number) => bottom - ((value - 105) / 9) * (bottom - top);
-  const currentY = y(112.5);
+    bottom = 287,
+    left = 8,
+    right = 523;
+  const y = (value: number) =>
+    bottom - ((value - minimum) / (maximum - minimum)) * (bottom - top);
+  const slot = Math.min(21, (right - left) / candles.length);
+  const body = Math.max(2, Math.min(10, slot * 0.5));
+  const x = (index: number) => left + slot * (index + 0.5);
+  const current = toNumber(market.lastPrice ?? latest.close);
+  const currentY = y(current);
+  const labels = [
+    ...new Set([
+      0,
+      Math.ceil((candles.length - 1) / 3),
+      Math.ceil(((candles.length - 1) * 2) / 3),
+      candles.length - 1,
+    ]),
+  ];
+  const fixed = (value: number) => value.toFixed(decimals);
+  const asset =
+    market.instrument?.baseName ?? market.instrument?.baseAsset ?? 'Market';
   return (
     <svg
       viewBox="0 0 590 335"
       role="img"
       aria-labelledby="candles-title candles-description"
     >
-      <title id="candles-title">Quant Coin candlestick price chart</title>
+      <title id="candles-title">{`${asset} candlestick price chart`}</title>
       <desc id="candles-description">
-        24 fixed sample fifteen-minute candles. First open 106.80 EUR; last
-        close 112.50 EUR. Session high 113.20 and low 106.20 EUR.
+        {`${candles.length} ${intervalLabel(interval)} candles. First open ${first.open}; last close ${latest.close}. High ${fixed(high)} and low ${fixed(low)}.`}
       </desc>
-      {[106, 108, 110, 112, 114].map((value) => (
+      {ticks.map((value) => (
         <g key={value}>
           <line
-            x1="8"
-            x2="523"
+            x1={left}
+            x2={right}
             y1={y(value)}
             y2={y(value)}
             stroke="#222633"
             strokeDasharray="3 5"
           />
           <text x="533" y={y(value) + 4}>
-            {value.toFixed(2)}
+            {fixed(value)}
           </text>
         </g>
       ))}
-      {candles.map(([open, high, low, close], index) => {
-        const x = 17 + index * 21,
+      {candles.map((candle, index) => {
+        const open = toNumber(candle.open),
+          close = toNumber(candle.close),
           color = close >= open ? '#75d8ad' : '#f18d99';
         return (
-          <g key={`${open}:${high}:${low}:${close}`}>
+          <g key={candle.start}>
             <title>
-              Sample candle {index + 1}: open {open}, high {high}, low {low},
-              close {close} EUR
+              {`${time(candle.start)}: open ${candle.open}, high ${candle.high}, low ${candle.low}, close ${candle.close}`}
             </title>
-            <line x1={x} x2={x} y1={y(high)} y2={y(low)} stroke={color} />
+            <line
+              x1={x(index)}
+              x2={x(index)}
+              y1={y(toNumber(candle.high))}
+              y2={y(toNumber(candle.low))}
+              stroke={color}
+            />
             <rect
-              x={x - 5}
+              x={x(index) - body / 2}
               y={Math.min(y(open), y(close))}
-              width="10"
+              width={body}
               height={Math.max(2, Math.abs(y(open) - y(close)))}
               fill={color}
             />
@@ -171,8 +229,8 @@ export function CandleChart() {
         );
       })}
       <line
-        x1="8"
-        x2="523"
+        x1={left}
+        x2={right}
         y1={currentY}
         y2={currentY}
         stroke="#aaa9ff"
@@ -181,20 +239,13 @@ export function CandleChart() {
       />
       <rect x="527" y={currentY - 10} width="60" height="20" fill="#36334f" />
       <text x="533" y={currentY + 4} style={{ fill: '#dedbff' }}>
-        112.50
+        {fixed(current)}
       </text>
-      <text x="12" y="325">
-        09:00
-      </text>
-      <text x="178" y="325">
-        11:00
-      </text>
-      <text x="345" y="325">
-        13:00
-      </text>
-      <text x="472" y="325">
-        14:45
-      </text>
+      {labels.map((index) => (
+        <text key={index} x={Math.min(Math.max(x(index) - 15, 4), 490)} y="325">
+          {time((candles[index] ?? latest).start)}
+        </text>
+      ))}
     </svg>
   );
 }

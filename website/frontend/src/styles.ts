@@ -4,6 +4,8 @@
  * Locale/formatting presentation can be retained when real API data is connected.
  */
 import styles from './App.module.css';
+import type { Decimal } from './trading/decimal.ts';
+import { format } from './trading/decimal.ts';
 
 export const cx = (...names: (string | false | undefined)[]) =>
   names
@@ -17,12 +19,10 @@ export const cx = (...names: (string | false | undefined)[]) =>
     })
     .filter(Boolean)
     .join(' ');
-export const money = (cents: number) =>
-  (cents / 100).toLocaleString('en-GB', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-export const number = (value: number) => value.toLocaleString('en-GB');
+/** Cash amount: grouped, at least two decimals, never rounded. */
+export const money = (value: Decimal) => format(value, 2);
+/** Quantity: grouped, exact digits, never rounded. */
+export const number = (value: Decimal) => format(value);
 export const signed = (value: number) =>
   `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}%`;
 export const initials = (name: string) =>

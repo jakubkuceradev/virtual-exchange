@@ -1,40 +1,89 @@
 /**
- * Trading UI works; all exchange operations and observations are simulated.
- * @mock-backend Submit/cancel, funds, public depth, orders, fills, and resulting feedback use DemoContext.
- * @mock-frontend Whole-QC precision, price limits, estimates, and validation are sample assumptions, not API contracts.
- * @implemented-ui Controlled form, Buy/Sell selection, labels, focus recovery, and tables.
- * Replace session commands/data and authoritative validation; retain reviewed controls/layout.
+ * Order ticket, public depth, and own order/fill tables over the active TradingSource.
+ * @implemented-ui Controlled form, Buy/Sell selection, labels, field feedback/focus,
+ *   exact decimal estimate, disabled states with explanations, and tables.
+ * Validation and outcomes come from the source (mock simulation or exchange).
  */
 import { UnstyledButton } from '@mantine/core';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { useDemo } from './DemoContext';
-import type { Side, SubmitResult } from './demo.ts';
 import { cx, money, number } from './styles';
+import { useTrading } from './trading/context.tsx';
+import type { Decimal } from './trading/decimal.ts';
+import { add, mul, normalizeInput, toNumber } from './trading/decimal.ts';
+import type {
+  AccountView,
+  OrderStatus,
+  Outcome,
+  Side,
+  TradingSource,
+} from './trading/types.ts';
 
-/** @mock-backend Submit/resources/results. @mock-frontend Demo precision/validation. @implemented-ui Form state and focus. */
+/** Participant-facing explanation when private account data is not shown. */
+export function accountMessage(account: AccountView, subject: string) {
+  switch (account.status) {
+    case 'signed-out':
+      return `Connect an API token on the API / Account page to see your ${subject}.`;
+    case 'connecting':
+      return `Loading your ${subject}…`;
+    case 'rejected':
+      return 'The API token was not accepted. Enter a valid token to continue.';
+    case 'no-read':
+      return `This token cannot read account data. Use a token with read access to see your ${subject}.`;
+    case 'not-provisioned':
+      return 'This account has no trading allocation on the exchange.';
+    default:
+      return '';
+  }
+}
+
+/** Why the ticket cannot submit right now, or null when it can. */
+function blocked({ account, market, trading }: TradingSource): string | null {
+  if (account.status !== 'ready')
+    return account.status === 'stale'
+      ? 'Reconnecting to the exchange. Trading resumes once your account is up to date.'
+      : accountMessage(account, 'balances');
+  if (!account.canTrade)
+    return 'This token is read-only. Use a token with trade access to place or cancel orders.';
+  if (market.status !== 'ready')
+    return 'Waiting for the order book. Trading resumes once the market is up to date.';
+  if (trading.unresolved) return trading.unresolved;
+  return null;
+}
+
+/** @implemented-ui Form state, exact estimate, and focus; outcomes come from the source. */
 export function OrderTicket() {
-  const { available, submit, orderFeedback, clearOrderFeedback } = useDemo();
+  const source = useTrading();
+  const { account, market, trading } = source;
+  const base = market.instrument?.baseAsset ?? '';
+  const quote = market.instrument?.quoteAsset ?? '';
   const [side, setSide] = useState<Side>('buy');
   const [price, setPrice] = useState('110.00');
   const [quantity, setQuantity] = useState('10');
-  const [validation, setValidation] = useState<SubmitResult | null>(null);
+  const [validation, setValidation] = useState<Outcome | null>(null);
   const priceRef = useRef<HTMLInputElement>(null),
     quantityRef = useRef<HTMLInputElement>(null);
-  const estimate = Number(price) * Number(quantity);
+  const reason = blocked(source);
+  const field = validation?.kind === 'rejected' ? validation.field : undefined;
+  const typedPrice = normalizeInput(price);
+  const typedQuantity = normalizeInput(quantity);
+  const estimate: Decimal | null =
+    typedPrice && typedQuantity ? mul(typedPrice, typedQuantity) : null;
+  const ready = account.status === 'ready' || account.status === 'stale';
   return (
     <form
       id="order-form"
       noValidate
       onInput={() => {
         setValidation(null);
-        clearOrderFeedback();
+        trading.clearFeedback();
       }}
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        const result = submit({ side, price, quantity });
+        if (reason || trading.busy) return;
+        const result = await trading.submit({ side, price, quantity });
         setValidation(result);
-        if (result.error)
+        if (result.kind === 'rejected' && result.field)
           (result.field === 'price' ? priceRef : quantityRef).current?.focus();
       }}
     >
@@ -49,16 +98,20 @@ export function OrderTicket() {
               checked={side === value}
               onChange={() => setSide(value)}
             />
-            <span>{value === 'buy' ? 'Buy' : 'Sell'} QC</span>
+            <span>
+              {value === 'buy' ? 'Buy' : 'Sell'} {base}
+            </span>
           </label>
         ))}
       </fieldset>
       <div className={cx('form-available')}>
         <span>{side === 'buy' ? 'Available cash' : 'Available holdings'}</span>
         <strong>
-          {side === 'buy'
-            ? `${money(available.cash)} EUR`
-            : `${number(available.holdings)} QC`}
+          {!ready
+            ? '—'
+            : side === 'buy'
+              ? `${money(account.cash.available)} ${quote}`
+              : `${number(account.asset.available)} ${base}`}
         </strong>
       </div>
       <label className={cx('field-label')} htmlFor="limit-price">
@@ -73,13 +126,13 @@ export function OrderTicket() {
           autoComplete="off"
           value={price}
           onChange={(event) => setPrice(event.target.value)}
-          aria-invalid={validation?.field === 'price' || undefined}
+          aria-invalid={field === 'price' || undefined}
           aria-describedby="price-error"
         />
-        <span>EUR</span>
+        <span>{quote}</span>
       </div>
       <p id="price-error" className={cx('field-error')}>
-        {validation?.field === 'price' ? validation.error : ''}
+        {field === 'price' ? validation?.message : ''}
       </p>
       <label className={cx('field-label')} htmlFor="quantity">
         Quantity
@@ -89,91 +142,133 @@ export function OrderTicket() {
           ref={quantityRef}
           id="quantity"
           name="quantity"
-          inputMode="numeric"
+          inputMode="decimal"
           autoComplete="off"
           value={quantity}
           onChange={(event) => setQuantity(event.target.value)}
-          aria-invalid={validation?.field === 'quantity' || undefined}
+          aria-invalid={field === 'quantity' || undefined}
           aria-describedby="quantity-error"
         />
-        <span>QC</span>
+        <span>{base}</span>
       </div>
       <p id="quantity-error" className={cx('field-error')}>
-        {validation?.field === 'quantity' ? validation.error : ''}
+        {field === 'quantity' ? validation?.message : ''}
       </p>
       <div className={cx('order-total')}>
         <span>Limit value</span>
-        <strong>
-          {Number.isFinite(estimate) && estimate >= 0
-            ? `${money(Math.round(estimate * 100))} EUR`
-            : '—'}
-        </strong>
+        <strong>{estimate ? `${money(estimate)} ${quote}` : '—'}</strong>
       </div>
       <UnstyledButton
         className={cx('button', side === 'sell' && 'sell-button')}
         id="submit-order"
         type="submit"
+        disabled={!!reason || trading.busy}
+        aria-busy={trading.busy || undefined}
+        aria-describedby={reason ? 'ticket-blocked' : undefined}
       >
         Place limit {side} <span aria-hidden="true">↗</span>
       </UnstyledButton>
+      {reason && (
+        <p id="ticket-blocked" className={cx('small muted')}>
+          {reason}
+        </p>
+      )}
       <p
-        className={cx('inline-feedback', !!orderFeedback?.error && 'is-error')}
+        className={cx(
+          'inline-feedback',
+          (trading.feedback?.kind === 'rejected' ||
+            trading.feedback?.kind === 'unresolved') &&
+            'is-error',
+        )}
         id="order-feedback"
         role="status"
         aria-live="polite"
       >
-        {orderFeedback?.error || orderFeedback?.message}
+        {trading.busy ? 'Sending order…' : trading.feedback?.message}
       </p>
     </form>
   );
 }
-/** @mock-backend Public depth (sample levels plus own open orders) from the simulation, without stream/snapshot reconciliation. @implemented-ui Depth-row rendering. */
+/** @implemented-ui Public depth rows from the source's synchronized book. */
 export function BookRows({ side }: { side: 'asks' | 'bids' }) {
-  const { book } = useDemo();
-  let cumulative = 0;
-  const quotes = book[side].map(([price, size]) => {
-    cumulative += size;
-    return { price, size, total: cumulative };
+  const { market, kind } = useTrading();
+  if (!market.book)
+    return (
+      <tr>
+        <td colSpan={3} className={cx('empty-cell')}>
+          {market.status === 'unavailable'
+            ? 'Order book unavailable'
+            : 'Loading order book…'}
+        </td>
+      </tr>
+    );
+  let cumulative: Decimal = '0';
+  const quotes = market.book[side].map(({ price, quantity }) => {
+    cumulative = add(cumulative, quantity);
+    return { price, quantity, total: cumulative };
   });
+  const deepest = Math.max(toNumber(cumulative), Number.MIN_VALUE);
   if (side === 'asks') quotes.reverse();
   if (!quotes.length)
     return (
       <tr>
         <td colSpan={3} className={cx('empty-cell')}>
-          No sample liquidity
+          {kind === 'mock' ? 'No sample liquidity' : 'No resting orders'}
         </td>
       </tr>
     );
-  return quotes.map(({ price, size, total }) => (
+  return quotes.map(({ price, quantity, total }) => (
     <tr
       key={price}
       style={
         {
-          '--depth': `${(total / Math.max(1, cumulative)) * 100}%`,
+          '--depth': `${(toNumber(total) / deepest) * 100}%`,
         } as CSSProperties
       }
     >
       <td className={cx(side === 'asks' ? 'negative' : 'positive')}>
         {money(price)}
       </td>
-      <td>{number(size)}</td>
+      <td>{number(quantity)}</td>
       <td className={cx('muted')}>{number(total)}</td>
     </tr>
   ));
 }
-/** @mock-backend Order history and cancel command. @implemented-ui Row rendering and focus after removal. */
+const statusLabel: Record<OrderStatus, string> = {
+  open: 'Open',
+  partially_filled: 'Partly filled',
+  filled: 'Filled',
+  cancelled: 'Cancelled',
+};
+const statusClass: Record<OrderStatus, string> = {
+  open: 'open',
+  partially_filled: 'open',
+  filled: 'filled',
+  cancelled: 'cancelled',
+};
+/** @implemented-ui Own order rows, cancel affordance, and focus after cancellation. */
 export function OrderRows() {
-  const { state, cancel } = useDemo();
+  const source = useTrading();
+  const { account, trading } = source;
   const cancelled = useRef(false);
   useEffect(() => {
     if (!cancelled.current) return;
     cancelled.current = false;
     (
-      document.querySelector<HTMLButtonElement>('#orders-body button') ??
-      document.querySelector<HTMLButtonElement>('#submit-order')
+      document.querySelector<HTMLButtonElement>(
+        '#orders-body button:not([disabled])',
+      ) ?? document.querySelector<HTMLButtonElement>('#submit-order')
     )?.focus({ preventScroll: true });
   });
-  if (!state.orders.length)
+  if (account.status !== 'ready' && account.status !== 'stale')
+    return (
+      <tr>
+        <td className={cx('empty-cell')} colSpan={6}>
+          {accountMessage(account, 'orders')}
+        </td>
+      </tr>
+    );
+  if (!account.orders.length)
     return (
       <tr>
         <td className={cx('empty-cell')} colSpan={6}>
@@ -181,31 +276,42 @@ export function OrderRows() {
         </td>
       </tr>
     );
-  return state.orders.map((order) => (
+  const canCancel =
+    account.status === 'ready' &&
+    account.canTrade &&
+    source.market.status === 'ready' &&
+    !trading.busy;
+  return account.orders.map((order) => (
     <tr key={order.id}>
-      <td>{order.id}</td>
+      <td>{order.label}</td>
       <td className={cx(order.side === 'buy' ? 'positive' : 'negative')}>
         {order.side === 'buy' ? 'Buy' : 'Sell'}
       </td>
       <td>{money(order.price)}</td>
       <td>
-        {order.remaining}{' '}
-        <span className={cx('muted')}>/ {order.quantity}</span>
+        {number(order.remaining)}{' '}
+        <span className={cx('muted')}>/ {number(order.quantity)}</span>
       </td>
       <td>
-        <span className={cx('order-status', order.status.toLowerCase())}>
-          {order.status}
+        <span className={cx('order-status', statusClass[order.status])}>
+          {statusLabel[order.status]}
         </span>
       </td>
       <td>
-        {order.status === 'Open' ? (
+        {order.status === 'open' || order.status === 'partially_filled' ? (
           <UnstyledButton
             className={cx('cancel-button')}
             type="button"
-            aria-label={`Cancel order ${order.id}`}
+            aria-label={`Cancel order ${order.label}`}
+            disabled={!canCancel}
+            title={
+              account.canTrade
+                ? undefined
+                : 'Requires a token with trade access'
+            }
             onClick={() => {
               cancelled.current = true;
-              cancel(order.id);
+              void trading.cancel(order.id);
             }}
           >
             Cancel
@@ -217,10 +323,18 @@ export function OrderRows() {
     </tr>
   ));
 }
-/** @mock-backend Own executions from the simulation, without a fills API. @implemented-ui Table rendering. */
+/** @implemented-ui Own execution rows. */
 export function FillRows() {
-  const { state } = useDemo();
-  if (!state.fills.length)
+  const { account } = useTrading();
+  if (account.status !== 'ready' && account.status !== 'stale')
+    return (
+      <tr>
+        <td className={cx('empty-cell')} colSpan={4}>
+          {accountMessage(account, 'fills')}
+        </td>
+      </tr>
+    );
+  if (!account.fills.length)
     return (
       <tr>
         <td className={cx('empty-cell')} colSpan={4}>
@@ -228,7 +342,7 @@ export function FillRows() {
         </td>
       </tr>
     );
-  return state.fills.map((fill) => (
+  return account.fills.map((fill) => (
     <tr key={fill.id}>
       <td className={cx('muted')}>{fill.time}</td>
       <td className={cx(fill.side === 'buy' ? 'positive' : 'negative')}>

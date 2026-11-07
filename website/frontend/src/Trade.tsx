@@ -1,38 +1,60 @@
 /**
- * Trade view: presentation implemented, market/account data mocked.
- * @mock-backend Last price, book, balances, orders, and fills come from the local session.
- * @mock-frontend Session change/high/low/volume, market identity, candle interval/date are fixed visual placeholders.
- * @implemented-ui Complete responsive chart/book/ticket/orders/fills composition.
- * Replace snapshot/session sources and use API instrument/market metadata.
+ * Trade view over the active TradingSource.
+ * @implemented-ui Complete responsive chart/book/ticket/orders/fills composition;
+ *   instrument units, statistics, and chart metadata come from the source.
+ * Mock and live sources supply the same records; see ../INTEGRATION.md.
  */
-import { CandleChart } from './Charts';
-import { useDemo } from './DemoContext';
-import { cx, money } from './styles';
+import { CandleChart, intervalLabel } from './Charts';
+import { cx, money, number } from './styles';
 import { BookRows, FillRows, OrderRows, OrderTicket } from './Trading';
+import { useTrading } from './trading/context.tsx';
+import { add, cmp, mul, sub, toNumber } from './trading/decimal.ts';
+import type { MarketView } from './trading/types.ts';
 
-/** @mock-backend Market/account observations. @mock-frontend Snapshot statistics and chart metadata. */
+/** Signed percentage change between the first and latest execution prices. */
+export function change(market: MarketView): string | null {
+  if (!market.stats || market.lastPrice == null) return null;
+  const first = toNumber(market.stats.first);
+  if (!first) return null;
+  const value = ((toNumber(market.lastPrice) - first) / first) * 100;
+  return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}%`;
+}
+const day = (epoch: number) =>
+  new Date(epoch)
+    .toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+    .toUpperCase();
+
+/** @implemented-ui Market strip, chart, book, ticket, and own activity from the source. */
 export function Trade({ active }: { active: boolean }) {
-  const { state, book, empty } = useDemo();
-  const lastPrice = state.lastPrice;
-  const ask = book.asks[0]?.[0];
-  const bid = book.bids[0]?.[0];
+  const { market, account } = useTrading();
+  const base = market.instrument?.baseAsset ?? '—';
+  const quote = market.instrument?.quoteAsset ?? '—';
+  const { lastPrice, stats, chart } = market;
+  const ask = market.book?.asks[0]?.price;
+  const bid = market.book?.bids[0]?.price;
+  const movement = change(market);
+  const latest = chart.candles.at(-1);
   return (
     <section data-view="trade" aria-labelledby="trade-title" hidden={!active}>
       <h1 id="trade-title" className={cx('sr-only')} tabIndex={-1}>
-        {'Trade QC'}
+        {`Trade ${base}`}
       </h1>
       <div className={cx('market-strip')}>
         <div className={cx('market-name')}>
           <span className={cx('asset-icon')} aria-hidden="true">
-            {'Q'}
+            {base.charAt(0)}
           </span>
           <div>
             <h2>
-              {'QC '}
-              <span className={cx('muted')}>{'/ EUR'}</span>
+              {`${base} `}
+              <span className={cx('muted')}>{`/ ${quote}`}</span>
             </h2>
             <span className={cx('small muted')}>
-              {'Quant Coin · fictional asset'}
+              {`${market.instrument?.baseName ?? base} · fictional asset`}
             </span>
           </div>
         </div>
@@ -45,30 +67,39 @@ export function Trade({ active }: { active: boolean }) {
               </>
             ) : (
               <>
-                {money(lastPrice)} <small>EUR</small>
+                {money(lastPrice)} <small>{quote}</small>
               </>
             )}
           </strong>
         </div>
         <div>
-          <span className={cx('label')}>{'SNAPSHOT CHANGE'}</span>
-          <strong className={cx('positive')}>{empty ? '—' : '+5.34%'}</strong>
-        </div>
-        <div>
-          <span className={cx('label')}>{'SNAPSHOT HIGH / LOW'}</span>
-          <strong className={cx('small')}>
-            {empty ? '— / —' : '113.20 / 106.20'}
+          <span className={cx('label')}>{`${market.statsLabel} CHANGE`}</span>
+          <strong
+            className={cx(
+              movement != null &&
+                (movement.startsWith('+') ? 'positive' : 'negative'),
+            )}
+          >
+            {movement ?? '—'}
           </strong>
         </div>
         <div>
-          <span className={cx('label')}>{'SNAPSHOT VOLUME'}</span>
+          <span className={cx('label')}>
+            {`${market.statsLabel} HIGH / LOW`}
+          </span>
+          <strong className={cx('small')}>
+            {stats ? `${money(stats.high)} / ${money(stats.low)}` : '— / —'}
+          </strong>
+        </div>
+        <div>
+          <span className={cx('label')}>{`${market.statsLabel} VOLUME`}</span>
           <strong>
-            {empty ? (
-              '—'
-            ) : (
+            {stats ? (
               <>
-                18,420 <small>QC</small>
+                {number(stats.volume)} <small>{base}</small>
               </>
+            ) : (
+              '—'
             )}
           </strong>
         </div>
@@ -77,17 +108,19 @@ export function Trade({ active }: { active: boolean }) {
         <article className={cx('panel price-panel')}>
           <div className={cx('panel-heading')}>
             <h2>{'Price history'}</h2>
-            <span className={cx('meta-label')}>{'15 min candles'}</span>
+            <span className={cx('meta-label')}>
+              {`${intervalLabel(chart.interval)} candles`}
+            </span>
           </div>
           <div className={cx('chart-key')}>
-            <span>{'QC / EUR'}</span>
+            <span>{`${base} / ${quote}`}</span>
           </div>
           <div id="candlestick-chart" className={cx('candle-chart')}>
-            <CandleChart />
+            <CandleChart chart={chart} />
           </div>
           <div className={cx('panel-foot')}>
-            <span>{'07 NOV 2026'}</span>
-            <span>{'Prices in EUR'}</span>
+            <span>{latest ? day(latest.start) : market.historyNote}</span>
+            <span>{`Prices in ${quote}`}</span>
           </div>
         </article>
         <article className={cx('panel book-panel')}>
@@ -103,15 +136,15 @@ export function Trade({ active }: { active: boolean }) {
                 <tr>
                   <th>
                     {'Price '}
-                    <span>{'EUR'}</span>
+                    <span>{quote}</span>
                   </th>
                   <th>
                     {'Size '}
-                    <span>{'QC'}</span>
+                    <span>{base}</span>
                   </th>
                   <th>
                     {'Total '}
-                    <span>{'QC'}</span>
+                    <span>{base}</span>
                   </th>
                 </tr>
               </thead>
@@ -123,15 +156,15 @@ export function Trade({ active }: { active: boolean }) {
               <span id="book-mid">
                 {ask != null && bid != null ? (
                   <>
-                    {money((ask + bid) / 2)} <small>EUR</small>
+                    {money(mul(add(ask, bid), '0.5'))} <small>{quote}</small>
                   </>
                 ) : (
                   '—'
                 )}
               </span>
               <span id="book-spread">
-                {ask != null && bid != null
-                  ? `Spread ${money(ask - bid)}`
+                {ask != null && bid != null && cmp(ask, bid) >= 0
+                  ? `Spread ${money(sub(ask, bid))}`
                   : 'Spread unavailable'}
               </span>
             </div>
@@ -141,9 +174,9 @@ export function Trade({ active }: { active: boolean }) {
               </caption>
               <thead className={cx('sr-only')}>
                 <tr>
-                  <th>{'Price EUR'}</th>
-                  <th>{'Size QC'}</th>
-                  <th>{'Total QC'}</th>
+                  <th>{`Price ${quote}`}</th>
+                  <th>{`Size ${base}`}</th>
+                  <th>{`Total ${base}`}</th>
                 </tr>
               </thead>
               <tbody id="bids">
@@ -165,8 +198,15 @@ export function Trade({ active }: { active: boolean }) {
             <h2>
               {'Your orders '}
               <span id="open-count" className={cx('count')}>
-                {state.orders.filter((order) => order.status === 'Open').length}{' '}
-                open
+                {account.status === 'ready' || account.status === 'stale'
+                  ? `${
+                      account.orders.filter(
+                        (order) =>
+                          order.status === 'open' ||
+                          order.status === 'partially_filled',
+                      ).length
+                    } open`
+                  : '—'}
               </span>
             </h2>
           </div>
@@ -179,8 +219,8 @@ export function Trade({ active }: { active: boolean }) {
                 <tr>
                   <th>{'Order'}</th>
                   <th>{'Side'}</th>
-                  <th>{'Limit / EUR'}</th>
-                  <th>{'Unfilled / QC'}</th>
+                  <th>{`Limit / ${quote}`}</th>
+                  <th>{`Unfilled / ${base}`}</th>
                   <th>{'Status'}</th>
                   <th>
                     <span className={cx('sr-only')}>{'Action'}</span>
@@ -206,8 +246,8 @@ export function Trade({ active }: { active: boolean }) {
                 <tr>
                   <th>{'Time'}</th>
                   <th>{'Side'}</th>
-                  <th>{'Price / EUR'}</th>
-                  <th>{'Size / QC'}</th>
+                  <th>{`Price / ${quote}`}</th>
+                  <th>{`Size / ${base}`}</th>
                 </tr>
               </thead>
               <tbody id="fills-body">
