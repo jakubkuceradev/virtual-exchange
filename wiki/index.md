@@ -8,8 +8,8 @@ Project scope, development priorities, and requirements maintained here; the REA
 
 ## Project knowledge
 
-- [Public interfaces](public-interfaces.md) — Experimental contracts, public types, website design baseline and typography, preview market, and frontend stack.
-- [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
+- [Public interfaces](public-interfaces.md) — Experimental contracts, public types, four-view React preview, mock integration boundaries, approved design, and frontend stack.
+- [Development setup](development.md) — Exchange/backend startup, frontend environment, current versions, independent checks, and containers.
 - [Visual overview](overview.html) — Dark visual document with module interactions and the first vertical slice.
 - [Project scope](project-scope.md) — Purpose, public/private boundaries, conceptual responsibilities, and current status.
 - [Development priorities](development-priorities.md) — Vertical slices and the first working trading flow.
