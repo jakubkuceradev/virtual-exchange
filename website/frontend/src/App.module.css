@@ -1813,3 +1813,22 @@ pre {
 .competition-panel .panel-foot .text-link {
   margin-left: auto;
 }
+.connection-notice {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--indigo-light);
+  background: var(--surface-raised);
+  color: #c7cbd8;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  margin: 0 0 20px;
+}
+.connection-notice[hidden] {
+  display: none;
+}
+.connect-panel {
+  margin-bottom: 16px;
+}
+.connect-panel .credential-field input {
+  color: var(--text);
+}

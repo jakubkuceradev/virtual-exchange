@@ -16,7 +16,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
-  "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "e2e", "tests", "*.ts"]
 }

@@ -6,11 +6,16 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Account } from './Account';
 import { Leaderboard } from './Leaderboard';
+import { useLiveSource } from './live/source.ts';
 import { Overview } from './Overview';
 import { cx } from './styles';
 import { Trade } from './Trade';
 import { TradingProvider, useTrading } from './trading/context.tsx';
 import { useMockSource } from './trading/mock.ts';
+
+/** Build mode, never a participant-facing switch: `--mode mock` selects the demo. */
+const useSource =
+  import.meta.env.MODE === 'mock' ? useMockSource : useLiveSource;
 
 const views = ['overview', 'trade', 'leaderboard', 'account'] as const;
 function subscribe(onChange: () => void) {
@@ -19,7 +24,7 @@ function subscribe(onChange: () => void) {
 }
 /** @implemented-ui Navigation, shell, and header identity. */
 function Dashboard() {
-  const { identity } = useTrading();
+  const { identity, notice } = useTrading();
   const name = identity?.name ?? 'Not connected';
   const hash = useSyncExternalStore(subscribe, () => location.hash);
   const [requested, anchor] = hash.slice(1).split('/');
@@ -103,6 +108,9 @@ function Dashboard() {
         </a>
       </header>
       <main id="main" tabIndex={-1}>
+        <p className={cx('connection-notice')} role="status" hidden={!notice}>
+          {notice}
+        </p>
         <Overview active={view === 'overview'} />
         <Trade active={view === 'trade'} />
         <Leaderboard active={view === 'leaderboard'} />
@@ -135,7 +143,7 @@ function Dashboard() {
 /** @implemented-ui Installs the data source for the whole app. */
 export function App() {
   return (
-    <TradingProvider useSource={useMockSource}>
+    <TradingProvider useSource={useSource}>
       <Dashboard />
     </TradingProvider>
   );

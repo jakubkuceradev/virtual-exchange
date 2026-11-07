@@ -58,8 +58,10 @@ export function OrderTicket() {
   const base = market.instrument?.baseAsset ?? '';
   const quote = market.instrument?.quoteAsset ?? '';
   const [side, setSide] = useState<Side>('buy');
-  const [price, setPrice] = useState('110.00');
-  const [quantity, setQuantity] = useState('10');
+  // The mock keeps its reviewed sample values; live mode starts empty.
+  const sample = source.kind === 'mock';
+  const [price, setPrice] = useState(sample ? '110.00' : '');
+  const [quantity, setQuantity] = useState(sample ? '10' : '');
   const [validation, setValidation] = useState<Outcome | null>(null);
   const priceRef = useRef<HTMLInputElement>(null),
     quantityRef = useRef<HTMLInputElement>(null);
