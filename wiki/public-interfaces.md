@@ -33,6 +33,18 @@ mocked backend data/commands, provisional frontend assumptions, and implemented
 UI behavior. Matching source annotations must be updated as each real API
 responsibility replaces its mock; visual completeness does not imply integration.
 
+**Agreed live-trading routing (not yet implemented).** For live browser trading,
+the frontend calls the exchange's published REST and WebSocket APIs directly
+through same-origin paths that a development/local serving proxy forwards to
+the exchange. No website-backend business API sits in this path. Participants
+enter an existing exchange token, which stays in tab memory only (no web storage,
+cookies, URL, or compiled secret). Public market data is visible before
+connecting. Live mode shows unavailable states for valuation, performance,
+rankings, and credential management rather than fixtures, and the mocked
+frontend stays usable for design work. Exact path prefixes, proxy implementation,
+and client state organization remain architecture choices. Competition data
+will still come from the website backend once it exists.
+
 ## Exchange interfaces
 
 The Python callable signatures exist, but every new operation raises
@@ -93,7 +105,7 @@ trades do not contain private account/order identifiers.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions and website-backend responses | Four React/headless Mantine views with fixture interactions and an independent approved HTML reference. Production browser trading/data routing remains pending. |
+| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state (agreed); website-backend responses for competition data (planned) | Four React/headless Mantine views with fixture interactions and an independent approved HTML reference. Live exchange integration is agreed but not implemented. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account

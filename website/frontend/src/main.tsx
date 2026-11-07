@@ -6,7 +6,7 @@
 import { HeadlessMantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import '../design/fonts/fonts.css';
+import './fonts/fonts.css';
 import './global.css';
 import { App } from './App';
 

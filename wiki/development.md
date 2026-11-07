@@ -74,7 +74,7 @@ market/account observation states. Ctrl+C stops the server.
 
 The [frontend README](../website/frontend/README.md) links desktop/mobile
 screenshots and describes sample interactions and unresolved production policies.
-With Node.js 24+, run `node --test website/frontend/tests/demo.test.mjs` for the
+With Node 26.13+ (see `.nvmrc`), run `node --test website/frontend/tests/demo.test.mjs` for the
 focused demo-state tests. These do not establish real exchange integration.
 The HTML mock state checks also run in frontend CI; screenshot review is manual.
 

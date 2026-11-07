@@ -22,7 +22,7 @@ export function Account({ active }: { active: boolean }) {
       </h1>
       <div className={cx('account-grid')}>
         <div>
-          <article className={cx('panel account-profile')}>
+          <article className={cx('panel')}>
             <div className={cx('panel-heading')}>
               <h2>{'Account details'}</h2>
               <span className={cx('label')}>{'01'}</span>

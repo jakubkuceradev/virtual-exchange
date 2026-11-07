@@ -27,7 +27,10 @@ export type Fill = {
 export type DemoState = {
   cash: number;
   holdings: number;
+  /** External sample liquidity only; own open orders are merged by book(). */
   book: Book;
+  /** Most recent execution price in cents, or null before the first trade. */
+  lastPrice: number | null;
   orders: Order[];
   fills: Fill[];
   credential: string | null;
@@ -54,6 +57,7 @@ export function createDemo(empty = false) {
     cash: snapshot.cash,
     holdings: snapshot.holdings,
     book: structuredClone(initialBook),
+    lastPrice: snapshot.price,
     orders: [
       {
         id: 'D-1041',
@@ -81,6 +85,7 @@ export function createDemo(empty = false) {
     state.orders = [];
     state.fills = [];
     state.book = { asks: [], bids: [] };
+    state.lastPrice = null;
     state.cash = snapshot.baseline;
     state.holdings = 0;
   }
@@ -96,6 +101,24 @@ export function createDemo(empty = false) {
         },
         { cash: state.cash, holdings: state.holdings },
       );
+  }
+  /** Public depth: external sample levels plus the participant's open remainders. */
+  function book(): Book {
+    const levels = {
+      asks: new Map<number, number>(),
+      bids: new Map<number, number>(),
+    };
+    for (const [price, size] of state.book.asks) levels.asks.set(price, size);
+    for (const [price, size] of state.book.bids) levels.bids.set(price, size);
+    for (const order of state.orders) {
+      if (order.status !== 'Open') continue;
+      const side = order.side === 'buy' ? levels.bids : levels.asks;
+      side.set(order.price, (side.get(order.price) ?? 0) + order.remaining);
+    }
+    return {
+      asks: [...levels.asks].sort(([a], [b]) => a - b),
+      bids: [...levels.bids].sort(([a], [b]) => b - a),
+    };
   }
   function submit({
     side,
@@ -152,38 +175,79 @@ export function createDemo(empty = false) {
       status: 'Open',
     };
     const quotes = side === 'buy' ? state.book.asks : state.book.bids;
+    const opposite: Side = side === 'buy' ? 'sell' : 'buy';
+    const crosses = (level: number) =>
+      side === 'buy' ? level <= price : level >= price;
+    const ownMakers = state.orders.filter(
+      (item) => item.status === 'Open' && item.side === opposite,
+    );
+    const levels = [
+      ...new Set([
+        ...quotes.map(([level]) => level),
+        ...ownMakers.map((item) => item.price),
+      ]),
+    ]
+      .filter(crosses)
+      .sort((a, b) => (side === 'buy' ? a - b : b - a));
     let executed = 0;
-    for (const quote of quotes) {
-      if (
-        !order.remaining ||
-        (side === 'buy' ? quote[0] > price : quote[0] < price)
-      )
-        break;
-      const filled = Math.min(order.remaining, quote[1]);
-      if (!filled) continue;
-      order.remaining -= filled;
-      quote[1] -= filled;
-      executed += filled;
-      const direction = side === 'buy' ? 1 : -1;
-      state.cash -= direction * quote[0] * filled;
-      state.holdings += direction * filled;
-      state.fills.unshift({
-        id: `F-${order.id}-${state.fills.length}`,
-        side: order.side,
-        price: quote[0],
-        quantity: filled,
-        time: new Date(Date.UTC(2026, 10, 7, 14, 46, state.fills.length))
-          .toISOString()
-          .slice(11, 19),
-      });
+    let prevented = 0;
+    for (const level of levels) {
+      if (!order.remaining) break;
+      // Sample liquidity predates the session, so it keeps priority at a level.
+      const quote = quotes.find(([quoted]) => quoted === level);
+      const filled = Math.min(order.remaining, quote?.[1] ?? 0);
+      if (quote && filled) {
+        order.remaining -= filled;
+        quote[1] -= filled;
+        executed += filled;
+        const direction = side === 'buy' ? 1 : -1;
+        state.cash -= direction * level * filled;
+        state.holdings += direction * filled;
+        state.lastPrice = level;
+        state.fills.unshift({
+          id: `F-${order.id}-${state.fills.length}`,
+          side: order.side,
+          price: level,
+          quantity: filled,
+          time: new Date(Date.UTC(2026, 10, 7, 14, 46, state.fills.length))
+            .toISOString()
+            .slice(11, 19),
+        });
+      }
+      // Self-trade prevention removes crossing quantity from both own orders
+      // without an execution. Older own orders (end of the list) go first.
+      for (const maker of ownMakers
+        .filter((item) => item.price === level)
+        .reverse()) {
+        if (!order.remaining) break;
+        const removed = Math.min(order.remaining, maker.remaining);
+        order.remaining -= removed;
+        maker.remaining -= removed;
+        prevented += removed;
+        if (!maker.remaining) maker.status = 'Cancelled';
+      }
     }
     state.book.asks = state.book.asks.filter(([, size]) => size > 0);
     state.book.bids = state.book.bids.filter(([, size]) => size > 0);
-    order.status = order.remaining ? 'Open' : 'Filled';
+    order.status = order.remaining
+      ? 'Open'
+      : prevented
+        ? 'Cancelled'
+        : 'Filled';
     state.orders.unshift(order);
-    const message = executed
-      ? `${order.id}: ${executed} QC filled within your limit.${order.remaining ? ` ${order.remaining} QC remains open.` : ' Order complete.'}`
-      : `${order.id}: limit ${side} for ${quantity} QC placed. Your order is open.`;
+    const parts = [
+      executed && `${executed} QC filled within your limit.`,
+      prevented &&
+        `${prevented} QC not executed because it would have traded with your own order.`,
+      order.remaining
+        ? executed || prevented
+          ? `${order.remaining} QC remains open.`
+          : `limit ${side} for ${quantity} QC placed. Your order is open.`
+        : executed && !prevented
+          ? 'Order complete.'
+          : '',
+    ].filter(Boolean);
+    const message = `${order.id}: ${parts.join(' ')}`;
     return { order, message };
   }
   function cancel(id: string): Feedback {
@@ -216,6 +280,7 @@ export function createDemo(empty = false) {
   return {
     state,
     available,
+    book,
     submit,
     cancel,
     createCredential,

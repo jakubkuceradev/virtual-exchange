@@ -891,6 +891,9 @@ th {
 .order-status.filled {
   color: var(--green);
 }
+.order-status.cancelled {
+  color: var(--muted);
+}
 .data-table td.empty-cell,
 .book-table td.empty-cell {
   text-align: center;

@@ -7,18 +7,15 @@
  */
 import { CandleChart } from './Charts';
 import { useDemo } from './DemoContext';
-import { snapshot } from './fixtures.ts';
 import { cx, money } from './styles';
 import { BookRows, FillRows, OrderRows, OrderTicket } from './Trading';
 
 /** @mock-backend Market/account observations. @mock-frontend Snapshot statistics and chart metadata. */
 export function Trade({ active }: { active: boolean }) {
-  const { state, empty } = useDemo();
-  const lastPrice =
-    state.fills.find((fill) => fill.id !== 'F-0831')?.price ??
-    (empty ? null : snapshot.price);
-  const ask = state.book.asks[0]?.[0];
-  const bid = state.book.bids[0]?.[0];
+  const { state, book, empty } = useDemo();
+  const lastPrice = state.lastPrice;
+  const ask = book.asks[0]?.[0];
+  const bid = book.bids[0]?.[0];
   return (
     <section data-view="trade" aria-labelledby="trade-title" hidden={!active}>
       <h1 id="trade-title" className={cx('sr-only')} tabIndex={-1}>

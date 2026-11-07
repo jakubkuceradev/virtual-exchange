@@ -159,3 +159,80 @@ for (const [label, createDemo] of [
     assert.notEqual(demo.state.credential, original);
   });
 }
+
+// React-only behavior added after the frozen HTML reference.
+nodeTest(
+  'React state: own open remainders appear in public depth and leave it on cancellation',
+  () => {
+    const demo = frontend();
+    assert.deepEqual(demo.book().bids.at(-1), [11000, 50]);
+    const result = demo.submit({ side: 'buy', price: '112.50', quantity: '5' });
+    assert.deepEqual(demo.book().bids[0], [11250, 5]);
+    assert.deepEqual(demo.state.book.bids[0], [11240, 8]);
+    demo.cancel(result.order.id);
+    assert.deepEqual(demo.book().bids[0], [11240, 8]);
+  },
+);
+
+nodeTest(
+  'React state: crossing an own order is prevented without a fill or price change',
+  () => {
+    const demo = frontend();
+    const maker = demo.submit({
+      side: 'buy',
+      price: '112.50',
+      quantity: '5',
+    }).order;
+    const fills = demo.state.fills.length;
+    const holdings = demo.state.holdings;
+    const result = demo.submit({
+      side: 'sell',
+      price: '112.45',
+      quantity: '3',
+    });
+    assert.equal(result.order.status, 'Cancelled');
+    assert.equal(result.order.remaining, 0);
+    assert.match(result.message, /3 QC not executed/);
+    assert.equal(maker.remaining, 2);
+    assert.equal(maker.status, 'Open');
+    assert.equal(demo.state.fills.length, fills);
+    assert.equal(demo.state.holdings, holdings);
+    assert.equal(demo.state.lastPrice, 11250);
+    assert.deepEqual(demo.book().bids[0], [11250, 2]);
+    assert.ok(demo.book().asks[0][0] > demo.book().bids[0][0]);
+  },
+);
+
+nodeTest(
+  'React state: external liquidity fills before own orders at a crossed level',
+  () => {
+    const demo = frontend();
+    const maker = demo.submit({
+      side: 'buy',
+      price: '112.40',
+      quantity: '4',
+    }).order;
+    const result = demo.submit({
+      side: 'sell',
+      price: '112.40',
+      quantity: '10',
+    });
+    assert.equal(demo.state.fills[0].quantity, 8);
+    assert.equal(maker.remaining, 2);
+    assert.equal(maker.status, 'Open');
+    assert.equal(result.order.status, 'Cancelled');
+    assert.match(result.message, /8 QC filled.*2 QC not executed/);
+    assert.equal(demo.state.lastPrice, 11240);
+  },
+);
+
+nodeTest(
+  'React state: executions update the last price; empty sessions have none',
+  () => {
+    const demo = frontend();
+    assert.equal(demo.state.lastPrice, 11250);
+    demo.submit({ side: 'buy', price: '112.70', quantity: '3' });
+    assert.equal(demo.state.lastPrice, 11260);
+    assert.equal(frontend(true).state.lastPrice, null);
+  },
+);

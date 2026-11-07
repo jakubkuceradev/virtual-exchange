@@ -9,7 +9,12 @@ export const cx = (...names: (string | false | undefined)[]) =>
   names
     .filter(Boolean)
     .flatMap((name) => String(name).split(' '))
-    .map((name) => styles[name])
+    .map((name) => {
+      const className = styles[name];
+      if (import.meta.env.DEV && !className)
+        console.warn(`Unknown CSS Module class: ${name}`);
+      return className;
+    })
     .filter(Boolean)
     .join(' ');
 export const money = (cents: number) =>

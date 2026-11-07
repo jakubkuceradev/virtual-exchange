@@ -26,6 +26,7 @@ export const snapshot = {
   price: 11250,
   baseline: 10000000,
 };
+export const participantCount = 142;
 export const performance = [
   100000, 101800, 100900, 105200, 104100, 106500, 105900, 109800, 108400,
   111200, 110100, 114500, 113200, 117600, 115900, 119300, 118200, 122100,

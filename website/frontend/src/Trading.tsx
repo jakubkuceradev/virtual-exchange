@@ -127,11 +127,11 @@ export function OrderTicket() {
     </form>
   );
 }
-/** @mock-backend Public depth from the simulation, without stream/snapshot reconciliation. @implemented-ui Depth-row rendering. */
+/** @mock-backend Public depth (sample levels plus own open orders) from the simulation, without stream/snapshot reconciliation. @implemented-ui Depth-row rendering. */
 export function BookRows({ side }: { side: 'asks' | 'bids' }) {
-  const { state } = useDemo();
+  const { book } = useDemo();
   let cumulative = 0;
-  const quotes = state.book[side].map(([price, size]) => {
+  const quotes = book[side].map(([price, size]) => {
     cumulative += size;
     return { price, size, total: cumulative };
   });

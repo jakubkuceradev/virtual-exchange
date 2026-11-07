@@ -29,6 +29,7 @@ function useSession() {
     orderFeedback,
     clearOrderFeedback: () => setOrderFeedback(null),
     available: demo.available(),
+    book: demo.book(),
     submit: (input: Parameters<typeof demo.submit>[0]) => {
       const result = run(() => demo.submit(input));
       setOrderFeedback(result);

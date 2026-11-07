@@ -48,8 +48,8 @@ shared state tests, builds, and runs desktop/mobile browser interaction checks.
 `src/main.tsx` owns the React root and `HeadlessMantineProvider`. Mantine CSS is
 never imported: global tokens/reset live in `src/global.css`, and component
 styles use CSS Modules. Mantine style props and theme color schemes are not part
-of this setup. Fonts are imported from the preserved, licensed local design
-assets and bundled by Vite; distribution licenses are included under
+of this setup. Fonts are bundled by Vite from `src/fonts/`, a copy of the
+licensed local design assets, so the build does not depend on `design/`; distribution licenses are included under
 `public/licenses/fonts/` and copied to the build. Biome handles lint/format independently of the
 TypeScript compiler; `tsc` checks types and Vite handles bundling.
 

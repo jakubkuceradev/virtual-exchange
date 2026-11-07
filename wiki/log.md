@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Frontend review fixes**: Recorded the agreed live-trading routing (browser → same-origin proxy → exchange REST/WebSocket, token in tab memory only) in public interfaces. React mock now shows own open orders in public depth, applies the exchange's self-trade prevention, and derives last price/valuation from session executions. React fonts are bundled from `src/fonts/` instead of the frozen `design/` folder. Corrected the documented Node version.
+
 * **Frontend integration status**: Marked every React source module/component with mocked backend/frontend responsibilities and implemented UI behavior; added a component replacement map to distinguish visual completeness from real API integration. Navbar rendering was compared with the HTML reference; the user confirmed it can stay unchanged.
 
 * **React website preview**: Migrated the four approved views into React with headless Mantine controls, CSS Modules, accessible SVG charts, hash navigation, and typed local order/credential state. Preserved the HTML reference, added shared state regressions and desktop/mobile browser checks/screenshots, and retained fixture-only service boundaries.

@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useDemo } from './DemoContext';
 import type { Period } from './fixtures.ts';
-import { periods } from './fixtures.ts';
+import { participantCount, periods } from './fixtures.ts';
 import { Nearby, PeriodControls, RankingRows } from './Standings';
 import { cx, signed } from './styles';
 
@@ -37,7 +37,7 @@ export function Leaderboard({ active }: { active: boolean }) {
               '—'
             ) : (
               <>
-                #{period.rank} <small>/ 142</small>
+                #{period.rank} <small>/ {participantCount}</small>
               </>
             )}
           </strong>
@@ -50,7 +50,7 @@ export function Leaderboard({ active }: { active: boolean }) {
         </div>
       </div>
       <div className={cx('leader-grid')}>
-        <article className={cx('panel leaderboard-panel')}>
+        <article className={cx('panel')}>
           <div className={cx('panel-heading')}>
             <div>
               <p className={cx('eyebrow')}>{'THE FIELD'}</p>
@@ -76,7 +76,7 @@ export function Leaderboard({ active }: { active: boolean }) {
           </div>
           <div className={cx('panel-foot')}>
             <span>{'Leaders + your neighborhood'}</span>
-            <span>{'142 participants'}</span>
+            <span>{`${participantCount} participants`}</span>
           </div>
         </article>
         <aside>

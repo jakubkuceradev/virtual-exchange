@@ -32,7 +32,7 @@ These are developer-facing annotations, so the reviewed interface stays unclutte
 | `Nearby` / `RankingRows` ([Standings.tsx](src/Standings.tsx)) | Fixture availability/identity and sample rows supplied by the parent. | Summary-only row rendering and current-participant highlight. |
 | `PeriodControls` ([Standings.tsx](src/Standings.tsx)) | No behavior is simulated here; the parent currently resolves selection to fixtures. | Controlled buttons and keyboard behavior. |
 | `OrderTicket` ([Trading.tsx](src/Trading.tsx)) | Submission, resources and results; whole-unit/two-decimal precision, limits and validation assume demo rules. No real request, pending state or server errors. | Controlled inputs, Buy/Sell selection, labels, field feedback/focus, estimate display. Bind precision/validation to actual instrument and server contracts. |
-| `BookRows` ([Trading.tsx](src/Trading.tsx)) | Local bid/ask levels; no snapshot/stream, freshness, sequence or reconnect handling. | Public depth-row rendering. |
+| `BookRows` ([Trading.tsx](src/Trading.tsx)) | Local bid/ask levels merged with own open remainders by `book()`; no snapshot/stream, freshness, sequence or reconnect handling. | Public depth-row rendering. |
 | `OrderRows` ([Trading.tsx](src/Trading.tsx)) | Own order history and cancellation result; no order API or concurrency handling. | Table rendering, cancel affordance, focus after cancellation. |
 | `FillRows` ([Trading.tsx](src/Trading.tsx)) | Own execution records; no fills API or live updates. | Table rendering. |
 | `Credentials` ([Credentials.tsx](src/Credentials.tsx)) | Dummy key state and create/revoke commands/feedback. No real credential storage or authentication scheme. | Actual browser clipboard, selectable manual-copy fallback, disabled states, focus recovery. |
@@ -42,7 +42,7 @@ These are developer-facing annotations, so the reviewed interface stays unclutte
 | Module | Status / replacement boundary |
 | --- | --- |
 | [fixtures.ts](src/fixtures.ts) | Entirely mocked observations/identity and visual assumptions. Its local records are not backend transport contracts. |
-| [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation: matching, reservations, settlement, cancellation, funding, validation, fixed session clock and dummy credential lifecycle. Replace with API commands/results; do not reuse it as production exchange logic. |
+| [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation: matching, self-trade prevention (both crossing own quantities removed without a fill, as in the exchange), last execution price, reservations, settlement, cancellation, funding, validation, fixed session clock and dummy credential lifecycle. Sample liquidity keeps priority over own orders at a price level. Replace with API commands/results; do not reuse it as production exchange logic. |
 | [DemoContext.tsx](src/DemoContext.tsx) / `useSession`, `DemoProvider`, `useDemo` | Mock session adapter: publishes React snapshots from the simulation and selects the `no-trades` scenario. Replace with ownership of authenticated account, market, competition and credential requests/state. |
 | [main.tsx](src/main.tsx) | Implemented entry point, headless Mantine provider and local fonts/styles. Its child `App` still composes the mock provider. |
 | [styles.ts](src/styles.ts) | Implemented class composition and display formatting; no simulated data or commands. |

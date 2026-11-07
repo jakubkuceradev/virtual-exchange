@@ -7,15 +7,32 @@
  */
 import { PerformanceChart } from './Charts';
 import { useDemo } from './DemoContext';
-import { periods, snapshot } from './fixtures.ts';
+import {
+  participantCount,
+  performance,
+  periods,
+  snapshot,
+} from './fixtures.ts';
 import { Nearby } from './Standings';
 import { cx, money, number, signed } from './styles';
 
 /** @mock-backend Account/competition/market observations. @mock-frontend Valuation and profit assumptions. */
 export function Overview({ active }: { active: boolean }) {
   const { state, available, empty } = useDemo();
-  const total = state.cash + state.holdings * snapshot.price;
-  const profit = total - snapshot.baseline;
+  const { lastPrice } = state;
+  // Sample valuation: cash plus holdings at the latest execution price.
+  const holdingValue =
+    lastPrice == null
+      ? state.holdings
+        ? null
+        : 0
+      : state.holdings * lastPrice;
+  const total = holdingValue == null ? null : state.cash + holdingValue;
+  const profit = total == null ? null : total - snapshot.baseline;
+  const [latestWhole, latestCents] = money(
+    (performance.at(-1) ?? 0) * 100,
+  ).split('.');
+  const standing = periods.continuous;
   return (
     <section
       data-view="overview"
@@ -29,7 +46,7 @@ export function Overview({ active }: { active: boolean }) {
         <article className={cx('metric')}>
           <span className={cx('label')}>{'TOTAL ACCOUNT VALUE'}</span>
           <div className={cx('metric-number')} data-value="total">
-            {money(total)} <small>EUR</small>
+            {total == null ? '—' : money(total)} <small>EUR</small>
           </div>
           <span className={cx('metric-note')}>
             {'Cash + QC at the sample valuation'}
@@ -50,9 +67,9 @@ export function Overview({ active }: { active: boolean }) {
             {number(state.holdings)} <small>QC</small>
           </div>
           <span className={cx('metric-note')} data-value="holding-value">
-            {empty
+            {lastPrice == null || holdingValue == null
               ? 'No market valuation yet'
-              : `${money(state.holdings * snapshot.price)} EUR at 112.50 EUR / QC`}
+              : `${money(holdingValue)} EUR at ${money(lastPrice)} EUR / QC`}
           </span>
         </article>
         <article className={cx('metric')}>
@@ -60,18 +77,30 @@ export function Overview({ active }: { active: boolean }) {
           <div
             className={cx(
               'metric-number',
-              profit >= 0 ? 'positive' : 'negative',
+              profit != null && (profit >= 0 ? 'positive' : 'negative'),
             )}
             data-value="profit"
           >
-            {profit >= 0 ? '+' : '−'}
-            {money(Math.abs(profit))} <small>EUR</small>
+            {profit == null ? (
+              '—'
+            ) : (
+              <>
+                {profit >= 0 ? '+' : '−'}
+                {money(Math.abs(profit))}
+              </>
+            )}{' '}
+            <small>EUR</small>
           </div>
           <span
-            className={cx('metric-note', profit >= 0 ? 'positive' : 'negative')}
+            className={cx(
+              'metric-note',
+              profit != null && (profit >= 0 ? 'positive' : 'negative'),
+            )}
             data-value="profit-percent"
           >
-            {signed((profit / snapshot.baseline) * 100)} since joining
+            {profit == null
+              ? 'Awaiting a market valuation'
+              : `${signed((profit / snapshot.baseline) * 100)} since joining`}
           </span>
         </article>
       </div>
@@ -89,9 +118,12 @@ export function Overview({ active }: { active: boolean }) {
             ) : (
               <>
                 <strong>
-                  130,450<span>.00 EUR</span>
+                  {latestWhole}
+                  <span>.{latestCents} EUR</span>
                 </strong>
-                <span className={cx('positive')}>↗ +30.45%</span>
+                <span className={cx('positive')}>
+                  ↗ {signed(standing.profit)}
+                </span>
               </>
             )}
           </div>
@@ -106,7 +138,7 @@ export function Overview({ active }: { active: boolean }) {
             </span>
             <span>
               {'Starting value '}
-              <strong>{'100,000 EUR'}</strong>
+              <strong>{`${number(snapshot.baseline / 100)} EUR`}</strong>
             </span>
           </div>
         </article>
@@ -124,7 +156,8 @@ export function Overview({ active }: { active: boolean }) {
                   '—'
                 ) : (
                   <>
-                    12<span>/ 142</span>
+                    {standing.rank}
+                    <span>/ {participantCount}</span>
                   </>
                 )}
               </span>
@@ -132,13 +165,13 @@ export function Overview({ active }: { active: boolean }) {
             </div>
             <div className={cx('rank-return')}>
               <strong className={cx('positive')}>
-                {empty ? '—' : '+30.45%'}
+                {empty ? '—' : signed(standing.profit)}
               </strong>
               <span className={cx('small muted')}>Return</span>
             </div>
           </div>
           <div className={cx('nearby-list')}>
-            <Nearby period={periods.continuous} />
+            <Nearby period={standing} />
           </div>
           <div className={cx('panel-foot')}>
             <a href="#leaderboard" className={cx('text-link')}>
@@ -164,7 +197,7 @@ export function Overview({ active }: { active: boolean }) {
             </p>
           </div>
           <div className={cx('market-card-price')}>
-            {empty ? (
+            {lastPrice == null ? (
               <>
                 <strong>—</strong>
                 <span className={cx('small muted')}>No executions yet</span>
@@ -172,7 +205,7 @@ export function Overview({ active }: { active: boolean }) {
             ) : (
               <>
                 <strong>
-                  112.50 <span className={cx('muted')}>EUR</span>
+                  {money(lastPrice)} <span className={cx('muted')}>EUR</span>
                 </strong>
                 <span className={cx('positive small')}>
                   +5.34% · sample session
