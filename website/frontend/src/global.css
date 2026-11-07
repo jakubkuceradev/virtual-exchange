@@ -1,3 +1,4 @@
+/* @implemented-ui Application reset/tokens and shared element styling. No simulated data or service behavior. */
 :root {
   color-scheme: dark;
   --bg: #07080c;

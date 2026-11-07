@@ -1,9 +1,17 @@
+/**
+ * Overview: presentation implemented, all financial/competition data mocked.
+ * @mock-backend Balances, holdings, rank, nearby participants, and market snapshot.
+ * @mock-frontend Fixed valuation/baseline and profit calculations are illustrative policies.
+ * @implemented-ui Responsive metric/panel layout and navigation links.
+ * Replace account/valuation/competition observations; retain reviewed presentation.
+ */
 import { PerformanceChart } from './Charts';
 import { useDemo } from './DemoContext';
 import { periods, snapshot } from './fixtures.ts';
 import { Nearby } from './Standings';
 import { cx, money, number, signed } from './styles';
 
+/** @mock-backend Account/competition/market observations. @mock-frontend Valuation and profit assumptions. */
 export function Overview({ active }: { active: boolean }) {
   const { state, available, empty } = useDemo();
   const total = state.cash + state.holdings * snapshot.price;

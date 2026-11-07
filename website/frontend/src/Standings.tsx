@@ -1,9 +1,17 @@
+/**
+ * Standings rendering and period controls work over sample data.
+ * @mock-backend Parent-provided leaders/nearby ranks/returns and signed-in identity are fixtures.
+ * @mock-frontend The empty/available state is selected by the demo scenario, not a response.
+ * @implemented-ui Summary-only rows, participant highlight, and period-button behavior.
+ * Replace ranking observations/identity and loading/empty/error state from the real API.
+ */
 import { UnstyledButton } from '@mantine/core';
 import { useDemo } from './DemoContext';
 import type { Period, Standings } from './fixtures.ts';
 import { participant, periods } from './fixtures.ts';
 import { cx, initials, signed } from './styles';
 
+/** @mock-backend Fixture identity/availability and parent-provided sample ranks. @implemented-ui Row rendering. */
 export function Nearby({ period }: { period: Standings }) {
   const { empty } = useDemo();
   if (empty)
@@ -32,6 +40,7 @@ export function Nearby({ period }: { period: Standings }) {
     </div>
   ));
 }
+/** @mock-backend Sample ranking records and availability; no competitor account data is fetched. @implemented-ui Table rendering. */
 export function RankingRows({ period }: { period: Standings }) {
   const { empty } = useDemo();
   if (empty)
@@ -82,6 +91,7 @@ export function RankingRows({ period }: { period: Standings }) {
     </>
   );
 }
+/** @implemented-ui Controlled period selection and native keyboard behavior; parent owns the mocked dataset lookup. */
 export function PeriodControls({
   value,
   onChange,

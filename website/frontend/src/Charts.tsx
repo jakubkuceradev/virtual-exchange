@@ -1,7 +1,15 @@
+/**
+ * Chart rendering works; observations and chart metadata are visual mocks.
+ * @mock-backend Performance/candle series and missing-observation scenario come from fixtures.
+ * @mock-frontend Fixed scales, current-price marker, dates, intervals, and descriptions match sample series.
+ * @implemented-ui Accessible React SVG and empty-state rendering.
+ * Replace series plus scales/labels/descriptions together; these are not live charts.
+ */
 import { useDemo } from './DemoContext';
 import { candles, performance } from './fixtures.ts';
 import { cx } from './styles';
 
+/** @implemented-ui Reusable empty-state renderer; its caller currently supplies a demo availability state. */
 function EmptyChart({
   title,
   description,
@@ -16,6 +24,7 @@ function EmptyChart({
     </div>
   );
 }
+/** @mock-backend Fixed account history. @mock-frontend Scale, dates, and descriptive text. @implemented-ui SVG rendering. */
 export function PerformanceChart() {
   const { empty } = useDemo();
   if (empty)
@@ -101,6 +110,7 @@ export function PerformanceChart() {
     </svg>
   );
 }
+/** @mock-backend Fixed candle history. @mock-frontend Scale, times, and price marker. @implemented-ui SVG rendering. */
 export function CandleChart() {
   const { empty } = useDemo();
   if (empty)

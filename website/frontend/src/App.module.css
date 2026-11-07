@@ -1,3 +1,4 @@
+/* @implemented-ui Reviewed component layouts, responsive styles, and header blur. No simulated data or service behavior. */
 /* biome-ignore-all lint/style/noDescendingSpecificity: Preserve the reviewed component cascade and responsive overrides. */
 .sr-only {
   position: absolute;

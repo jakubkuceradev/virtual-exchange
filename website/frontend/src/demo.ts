@@ -1,3 +1,10 @@
+/**
+ * MOCK BACKEND SIMULATION — never use as production exchange/authentication logic.
+ * @mock-backend In-memory order matching, reservations, settlement, cancellation, and dummy-key lifecycle.
+ * @mock-frontend Numeric precision, limits, account funding, session times, and simulated validation are illustrative.
+ * Replace this controller with API commands/results; do not port its policy into a real client.
+ * These local record types describe the demo, not the published backend contract.
+ */
 import type { Book } from './fixtures.ts';
 import { initialBook, snapshot } from './fixtures.ts';
 
@@ -41,6 +48,7 @@ export type SubmitResult =
 
 // A disposable, in-memory design demo, not an exchange client or policy engine.
 // Cash/prices use integer cents and the demo accepts whole QC units only.
+/** @mock-backend Creates a disposable simulated account/exchange; never issues real requests. */
 export function createDemo(empty = false) {
   const state: DemoState = {
     cash: snapshot.cash,

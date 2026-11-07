@@ -1,3 +1,9 @@
+/**
+ * Application shell: mixed integration status. See ../INTEGRATION.md.
+ * @implemented-ui Hash navigation, history, focus handling, header/footer links.
+ * @mock-backend Signed-in identity comes from fixtures; App mounts DemoProvider unconditionally.
+ * Replace session/identity wiring when authentication is connected; retain navigation/layout.
+ */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Account } from './Account';
 import { DemoProvider } from './DemoContext';
@@ -12,6 +18,7 @@ function subscribe(onChange: () => void) {
   window.addEventListener('hashchange', onChange);
   return () => window.removeEventListener('hashchange', onChange);
 }
+/** @implemented-ui Navigation and shell. @mock-backend Fixture identity in the header. */
 function Dashboard() {
   const hash = useSyncExternalStore(subscribe, () => location.hash);
   const [requested, anchor] = hash.slice(1).split('/');
@@ -124,6 +131,7 @@ function Dashboard() {
     </>
   );
 }
+/** @mock-backend Composition currently always installs DemoProvider; no login/session integration. */
 export function App() {
   return (
     <DemoProvider>

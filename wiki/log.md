@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Frontend integration status**: Marked every React source module/component with mocked backend/frontend responsibilities and implemented UI behavior; added a component replacement map to distinguish visual completeness from real API integration. Navbar rendering was compared with the HTML reference; the user confirmed it can stay unchanged.
+
 * **React website preview**: Migrated the four approved views into React with headless Mantine controls, CSS Modules, accessible SVG charts, hash navigation, and typed local order/credential state. Preserved the HTML reference, added shared state regressions and desktop/mobile browser checks/screenshots, and retained fixture-only service boundaries.
 
 * **Frontend foundation**: Added a separately buildable React/TypeScript/Vite app with headless Mantine, CSS Modules, local fonts, fixture account tabs, locked current stable dependencies, and frontend CI/browser checks. Full view migration and backend integration remain pending.

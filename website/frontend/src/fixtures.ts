@@ -1,3 +1,9 @@
+/**
+ * MOCK DATA ONLY — every observation and identity below is fabricated.
+ * @mock-backend Account identity, cash/holdings, market depth/history, and competition observations.
+ * @mock-frontend Valuation baseline, fixed dates, ranking samples, and instrument conventions preserve the visual.
+ * Replace with published API records; these local types are not transport contracts.
+ */
 export type Book = { asks: [number, number][]; bids: [number, number][] };
 export type Period = 'continuous' | 'weekly' | 'monthly' | 'yearly';
 export type Standings = {

@@ -1,9 +1,17 @@
+/**
+ * Trade view: presentation implemented, market/account data mocked.
+ * @mock-backend Last price, book, balances, orders, and fills come from the local session.
+ * @mock-frontend Session change/high/low/volume, market identity, candle interval/date are fixed visual placeholders.
+ * @implemented-ui Complete responsive chart/book/ticket/orders/fills composition.
+ * Replace snapshot/session sources and use API instrument/market metadata.
+ */
 import { CandleChart } from './Charts';
 import { useDemo } from './DemoContext';
 import { snapshot } from './fixtures.ts';
 import { cx, money } from './styles';
 import { BookRows, FillRows, OrderRows, OrderTicket } from './Trading';
 
+/** @mock-backend Market/account observations. @mock-frontend Snapshot statistics and chart metadata. */
 export function Trade({ active }: { active: boolean }) {
   const { state, empty } = useDemo();
   const lastPrice =

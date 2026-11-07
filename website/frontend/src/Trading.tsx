@@ -1,3 +1,10 @@
+/**
+ * Trading UI works; all exchange operations and observations are simulated.
+ * @mock-backend Submit/cancel, funds, public depth, orders, fills, and resulting feedback use DemoContext.
+ * @mock-frontend Whole-QC precision, price limits, estimates, and validation are sample assumptions, not API contracts.
+ * @implemented-ui Controlled form, Buy/Sell selection, labels, focus recovery, and tables.
+ * Replace session commands/data and authoritative validation; retain reviewed controls/layout.
+ */
 import { UnstyledButton } from '@mantine/core';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -5,6 +12,7 @@ import { useDemo } from './DemoContext';
 import type { Side, SubmitResult } from './demo.ts';
 import { cx, money, number } from './styles';
 
+/** @mock-backend Submit/resources/results. @mock-frontend Demo precision/validation. @implemented-ui Form state and focus. */
 export function OrderTicket() {
   const { available, submit, orderFeedback, clearOrderFeedback } = useDemo();
   const [side, setSide] = useState<Side>('buy');
@@ -119,6 +127,7 @@ export function OrderTicket() {
     </form>
   );
 }
+/** @mock-backend Public depth from the simulation, without stream/snapshot reconciliation. @implemented-ui Depth-row rendering. */
 export function BookRows({ side }: { side: 'asks' | 'bids' }) {
   const { state } = useDemo();
   let cumulative = 0;
@@ -152,6 +161,7 @@ export function BookRows({ side }: { side: 'asks' | 'bids' }) {
     </tr>
   ));
 }
+/** @mock-backend Order history and cancel command. @implemented-ui Row rendering and focus after removal. */
 export function OrderRows() {
   const { state, cancel } = useDemo();
   const cancelled = useRef(false);
@@ -207,6 +217,7 @@ export function OrderRows() {
     </tr>
   ));
 }
+/** @mock-backend Own executions from the simulation, without a fills API. @implemented-ui Table rendering. */
 export function FillRows() {
   const { state } = useDemo();
   if (!state.fills.length)

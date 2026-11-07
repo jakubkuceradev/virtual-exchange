@@ -1,3 +1,8 @@
+/**
+ * @implemented-ui Real React root, StrictMode, headless Mantine, and local style/font setup.
+ * No simulated behavior originates here; App currently composes the mock session.
+ * See ../INTEGRATION.md before treating displayed features as API-integrated.
+ */
 import { HeadlessMantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

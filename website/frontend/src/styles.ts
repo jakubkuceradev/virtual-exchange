@@ -1,3 +1,8 @@
+/**
+ * @implemented-ui CSS Module class composition and display-format helpers.
+ * These functions do not fetch, simulate, or mutate account/market data.
+ * Locale/formatting presentation can be retained when real API data is connected.
+ */
 import styles from './App.module.css';
 
 export const cx = (...names: (string | false | undefined)[]) =>

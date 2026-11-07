@@ -28,6 +28,10 @@ image. The frontend preview uses React + TypeScript + Vite with
 HeadlessMantineProvider and custom CSS Modules. Overview, Trade,
 Leaderboard, and API / Account use typed fixture state, accessible SVG charts,
 hash navigation, and headless controls. No service calls or persistence are added.
+The [frontend integration map](../website/frontend/INTEGRATION.md) distinguishes
+mocked backend data/commands, provisional frontend assumptions, and implemented
+UI behavior. Matching source annotations must be updated as each real API
+responsibility replaces its mock; visual completeness does not imply integration.
 
 ## Exchange interfaces
 

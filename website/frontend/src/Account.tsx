@@ -1,7 +1,15 @@
+/**
+ * Account view: presentation implemented, identity/access documentation mocked.
+ * @mock-backend Profile identity and signed-in status are fixtures; there is no authenticated session.
+ * @mock-frontend Request URL, authorization scheme, payload, and API notes are provisional examples.
+ * @implemented-ui Profile layout and navigable documentation anchor.
+ * Replace profile/session data and example/documentation with published API contracts.
+ */
 import { Credentials } from './Credentials';
 import { participant } from './fixtures.ts';
 import { cx } from './styles';
 
+/** @mock-backend Profile/session. @mock-frontend API example and documentation placeholders. */
 export function Account({ active }: { active: boolean }) {
   return (
     <section

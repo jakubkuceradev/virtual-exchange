@@ -7,6 +7,13 @@ npm lockfile. The approved HTML mock has been migrated into Overview, Trade, Lea
 and API / Account views. Navigation, limit orders/cancellation, period controls,
 and dummy credentials use disposable local state; reload resets the session.
 
+## What is mocked and what is implemented
+
+The [component and module integration map](INTEGRATION.md) records every mock
+boundary and the working UI to retain. Source uses searchable `@mock-backend`,
+`@mock-frontend`, and `@implemented-ui` annotations. All participant data/commands
+remain mocked; navigation, rendering, focus and browser clipboard behavior work.
+
 ## Run the React application
 
 Use Node **26.13.0 LTS** (`nvm install` / `nvm use` in this directory):

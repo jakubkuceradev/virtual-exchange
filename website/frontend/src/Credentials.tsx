@@ -1,9 +1,17 @@
+/**
+ * Credential controls: real clipboard UI around a simulated credential lifecycle.
+ * @mock-backend Create/revoke/key state and success/failure feedback come from DemoContext.
+ * @mock-frontend All displayed keys and the suggested access scheme are dummy placeholders.
+ * @implemented-ui Clipboard write/read-only selection fallback, disabled states, and focus recovery.
+ * Replace credential commands/state with authenticated APIs; keep browser clipboard behavior.
+ */
 import { UnstyledButton } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { useDemo } from './DemoContext';
 import type { Feedback } from './demo.ts';
 import { cx } from './styles';
 
+/** @mock-backend Dummy create/revoke/state. @implemented-ui Actual browser clipboard and manual-copy fallback. */
 export function Credentials() {
   const { state, createCredential, revokeCredential } = useDemo();
   const [feedback, setFeedback] = useState<Feedback | null>(null);

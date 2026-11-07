@@ -1,3 +1,10 @@
+/**
+ * Leaderboard: real selection UI over mocked observations.
+ * @mock-backend All periods select fixed ranks/returns/participants; there is no ranking API request.
+ * @mock-frontend Participant count and summary standings are fixed visual placeholders.
+ * @implemented-ui Period selection, selection persistence, summary/table/nearby layout.
+ * Replace period datasets with website-backend results; retain selection/rendering.
+ */
 import { useState } from 'react';
 import { useDemo } from './DemoContext';
 import type { Period } from './fixtures.ts';
@@ -5,6 +12,7 @@ import { periods } from './fixtures.ts';
 import { Nearby, PeriodControls, RankingRows } from './Standings';
 import { cx, signed } from './styles';
 
+/** @mock-backend Selected period reads fixtures, not a service. @implemented-ui Period selection is functional. */
 export function Leaderboard({ active }: { active: boolean }) {
   const { empty } = useDemo();
   const [selected, setSelected] = useState<Period>('continuous');
