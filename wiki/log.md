@@ -2,11 +2,17 @@
 
 ## 2026-11-07
 
+* **Client-actionable wire fixes**: Bearer failures now return `{"error": code}` like other exchange errors; `/account/snapshot` channel baselines are an object, matching WebSocket control messages; refused subscriptions close 4401/4403 with the error code as reason instead of the protocol-error 1008.
+
+* **Stream review fixes**: Subscriber limits now bound backlog rather than single bundles, so multi-part bundles over 1 MiB reach caught-up subscribers instead of forcing reconnects; heartbeats are queued behind earlier updates.
+
 * **REST review fixes**: Required canonical unsigned decimal amount strings, emitted plain decimal notation, added commit IDs to /book and /balances, and served /balances without copying order history.
 
 * **Funded exchange review fixes**: Bounded decimal digits/scale before exact arithmetic; made command cost independent of retained history through overlay candidates and paged history queries; added maker/taker `liquidity` to fills; book snapshots report their commit. History will move to storage with persistence instead of staying in memory.
 
 * **Matching result reason removed**: Dropped the unused `MatchingResult.cancellation_reason`; snapshot prevented/cancelled quantities already record why quantity was removed, for makers as well as incoming orders.
+
+* **Trading observations**: Added authenticated private/public WebSocket channels with settled post-commit bundles, gap-free snapshots, channel sequences, bounded queues, reconnect guidance, and cancellation-safe cleanup. Verified real Uvicorn HTTP/WebSocket trading and restart with synthetic credentials.
 
 * **Trading REST**: Connected configured funded exchange instances to submit/cancel, private account/recovery queries, and public book/trade observations. Added acceptance receipts, sanitized errors, and cursor/client-ID reconciliation.
 

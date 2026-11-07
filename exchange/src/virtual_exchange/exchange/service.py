@@ -18,6 +18,7 @@ from virtual_exchange.exchange.configuration import (
 )
 from virtual_exchange.exchange.ledger import Ledger
 from virtual_exchange.exchange.matching import MatchingEngine
+from virtual_exchange.exchange.observations import Subscription, frames
 from virtual_exchange.types import (
     Acceptance,
     AccountSnapshot,
@@ -30,6 +31,7 @@ from virtual_exchange.types import (
     LimitOrder,
     Liquidity,
     OrderBookSnapshot,
+    OrderSide,
     OrderSnapshot,
     Permission,
     Trade,
@@ -53,6 +55,7 @@ class _State:
     account_orders: dict[str, list[str]]
     fills: dict[str, list[Fill]]
     clients: dict[tuple[str, str], str]
+    channels: dict[tuple[str, str], int]
     sequence: int = 0
 
     def apply(self, candidate: _Candidate) -> None:
@@ -68,6 +71,7 @@ class _State:
         for account, fills in candidate.fills.items():
             self.fills.setdefault(account, []).extend(fills)
         self.clients.update(candidate.clients)
+        self.channels.update(candidate.channels)
         self.sequence = candidate.sequence
 
 
@@ -86,6 +90,7 @@ class _Candidate:
     orders: dict[str, OrderSnapshot] = field(default_factory=dict)
     fills: dict[str, list[Fill]] = field(default_factory=dict)
     clients: dict[tuple[str, str], str] = field(default_factory=dict)
+    channels: dict[tuple[str, str], int] = field(default_factory=dict)
     executions: tuple[Execution, ...] = ()
 
     @classmethod
@@ -94,6 +99,9 @@ class _Candidate:
 
     def order(self, order_id: str) -> OrderSnapshot:
         return self.orders.get(order_id) or self.base.orders[order_id]
+
+    def channel(self, key: tuple[str, str]) -> int:
+        return self.channels.get(key, self.base.channels.get(key, 0))
 
 
 class Exchange:
@@ -115,6 +123,7 @@ class Exchange:
                 self.amounts.allocation(asset, cash=False),
             )
         self.process_id = str(uuid4())
+        self._subscribers: set[Subscription] = set()
         self._cursor_key = uuid4().bytes
         self._lock = asyncio.Lock()
         self._state = _State(
@@ -123,6 +132,7 @@ class Exchange:
             {},
             {account: [] for account in values},
             {account: [] for account in values},
+            {},
             {},
         )
 
@@ -225,9 +235,148 @@ class Exchange:
             self._commit(candidate)
             return receipt
 
+    def _prepare_observations(
+        self, candidate: _Candidate
+    ) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+        old, new = candidate.base.engine, candidate.engine
+        # Only price levels of orders this command changed can differ.
+        touched: dict[str, set[Decimal]] = {"buy": set(), "sell": set()}
+        for snapshot in candidate.orders.values():
+            touched[snapshot.side].add(snapshot.limit_price)
+        changes = []
+        for side, prices in touched.items():
+            for price in sorted(prices, reverse=side == "buy"):
+                before = old.get_level(side=OrderSide(side), price=price)
+                after = new.get_level(side=OrderSide(side), price=price)
+                if before != after:
+                    changes.append({"side": side, "price": price, "quantity": after})
+        payloads = []
+        if changes:
+            payloads.append(("book", "", changes))
+        if candidate.executions:
+            payloads.append(
+                ("trades", "", tuple(_trade(e) for e in candidate.executions))
+            )
+        changed: dict[str, list[OrderSnapshot]] = {}
+        for snapshot in candidate.orders.values():
+            changed.setdefault(snapshot.account_id, []).append(snapshot)
+        for account in candidate.ledger.total:
+            if orders := changed.get(account):
+                payloads.append(("orders", account, tuple(orders)))
+            if fills := candidate.fills.get(account):
+                payloads.append(("fills", account, tuple(fills)))
+        bundles = []
+        for channel, account, payload in payloads:
+            key = channel, account
+            sequence = candidate.channel(key) + 1
+            candidate.channels[key] = sequence
+            bundles.append(
+                (
+                    channel,
+                    account,
+                    frames(
+                        process_id=self.process_id,
+                        channel=channel,
+                        sequence=sequence,
+                        commit_id=candidate.sequence,
+                        kind="update",
+                        payload=payload,
+                    ),
+                )
+            )
+        return tuple(bundles)
+
     def _commit(self, candidate: _Candidate) -> None:
-        """Absorb state only after every financial effect and result is prepared."""
+        # Encoding can fail and must happen before any authoritative mutation.
+        bundles = self._prepare_observations(candidate)
         self._state.apply(candidate)
+        for subscription in self._subscribers:
+            messages = tuple(
+                message
+                for channel, account, batch in bundles
+                if channel in subscription.channels
+                and (not account or account == subscription.account_id)
+                for message in batch
+            )
+            subscription.offer(messages)
+
+    async def subscribe(
+        self, *, channels: frozenset[str], identity: AuthenticatedIdentity | None = None
+    ) -> Subscription:
+        async with self._lock:
+            if not channels or not channels <= {"book", "trades", "orders", "fills"}:
+                raise TradingError("invalid_channels")
+            account = None
+            if channels & {"orders", "fills"}:
+                if identity is None:
+                    raise TradingError("authentication_required", 401)
+                account = self._account(identity, Permission.READ)
+            baselines = {
+                channel: self._state.channels.get(
+                    (channel, account if channel in {"orders", "fills"} else ""), 0
+                )
+                for channel in sorted(channels)
+            }
+            initial = list(
+                frames(
+                    process_id=self.process_id,
+                    channel="control",
+                    sequence=0,
+                    commit_id=self._state.sequence,
+                    kind="subscribed",
+                    payload={"channels": baselines},
+                )
+            )
+            if "book" in channels:
+                book = self._state.engine.get_order_book()
+                for kind, payload in (
+                    ("snapshot_start", {}),
+                    ("snapshot", {"bids": book.bids, "asks": book.asks}),
+                    ("snapshot_end", {}),
+                ):
+                    initial.extend(
+                        frames(
+                            process_id=self.process_id,
+                            channel="book",
+                            sequence=baselines["book"],
+                            commit_id=self._state.sequence,
+                            kind=kind,
+                            payload=payload,
+                        )
+                    )
+            subscription = Subscription(channels, account, tuple(initial))
+            self._subscribers.add(subscription)
+            return subscription
+
+    async def unsubscribe(self, subscription: Subscription) -> None:
+        async with self._lock:
+            self._subscribers.discard(subscription)
+
+    async def heartbeat(self, subscription: Subscription) -> None:
+        """Queue current baselines behind every earlier committed update."""
+        async with self._lock:
+            baselines = {
+                channel: self._state.channels.get(
+                    (
+                        channel,
+                        subscription.account_id
+                        if channel in {"orders", "fills"}
+                        else "",
+                    ),
+                    0,
+                )
+                for channel in sorted(subscription.channels)
+            }
+            subscription.offer(
+                frames(
+                    process_id=self.process_id,
+                    channel="control",
+                    sequence=0,
+                    commit_id=self._state.sequence,
+                    kind="heartbeat",
+                    payload={"channels": baselines},
+                )
+            )
 
     async def cancel_order(
         self, *, identity: AuthenticatedIdentity, order_id: str
@@ -267,7 +416,10 @@ class Exchange:
         )
 
     def _baselines(self, account: str) -> tuple[tuple[str, int], ...]:
-        return (("orders", 0), ("fills", 0))
+        return tuple(
+            (channel, self._state.channels.get((channel, account), 0))
+            for channel in ("orders", "fills")
+        )
 
     async def get_account_snapshot(
         self, *, identity: AuthenticatedIdentity
@@ -302,6 +454,7 @@ class Exchange:
         limit: int,
         cursor: str | None,
         high_watermark: int | None = None,
+        newest_first: bool = False,
     ) -> dict:
         """Slice one page of insertion-ordered history in O(page size)."""
         if type(limit) is not int or not 1 <= limit <= 1000:
@@ -340,7 +493,10 @@ class Exchange:
             next_cursor = base64.urlsafe_b64encode(
                 payload + hmac.digest(self._cursor_key, payload, "sha256")
             ).decode()
-        data = tuple(fetch(offset, end))
+        if newest_first:
+            data = tuple(reversed(fetch(high - end, high - offset)))
+        else:
+            data = tuple(fetch(offset, end))
         return {
             "process_id": self.process_id,
             "commit_id": self._state.sequence,
@@ -431,9 +587,10 @@ class Exchange:
                 fetch=lambda start, stop: [
                     _trade(e) for e in engine.list_executions(start=start, stop=stop)
                 ],
-                scope="trades",
+                scope="trades:newest",
                 limit=limit,
                 cursor=cursor,
+                newest_first=True,
             )
 
 

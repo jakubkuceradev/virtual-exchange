@@ -79,7 +79,7 @@ The module-level trading stubs are replaced by this instance API. Public data
 comes from the same instance. Retained history is per-process; paginated results
 have signed account/filter/process-scoped cursors and an insertion high watermark.
 Order status is current at page read, not frozen across pages. Recovery snapshots
-contain coherent balances, retained orders and a fill watermark. REST adapters are implemented below; live delivery follows in the next stacked change.
+contain coherent balances, retained orders and a fill watermark. REST and live adapters share this instance, as described below.
 
 `exchange/tests/test_trading.py` covers the Alice/Bob trade, price savings,
 partial cancellation, inventory protection, competing funding requests,
@@ -117,7 +117,8 @@ Malformed/domain inputs return sanitized 400 codes; missing/invalid auth returns
 401, insufficient grants or unprovisioned accounts 403, foreign/unknown orders
 404, insufficient funds/duplicate IDs/terminal cancellation 409. Pages default to
 100, maximum 1000; cursor scopes include account, filter and process. Orders can
-filter status. The insertion high watermark stays fixed while snapshots reflect
+filter status. Filtered pages may be empty; follow next_cursor until null.
+The insertion high watermark stays fixed while snapshots reflect
 current state at each page read. Fills accept high_watermark from the recovery
 snapshot. A new process invalidates old cursors. Public Trade projections expose
 exchange maker/taker IDs without accounts or private client IDs.
@@ -125,3 +126,62 @@ exchange maker/taker IDs without accounts or private client IDs.
 `exchange/tests/test_trading_api.py` verifies real HTTP trades, exact balances,
 permissions/ownership, malformed input, client-ID recovery, pagination, public
 privacy, disabled trading, and authentication before malformed-body parsing.
+
+## WebSocket observations
+
+Connect to /ws and subscribe once within 5 seconds:
+
+```json
+{"type":"subscribe","channels":["book","trades","orders","fills"],"token":"<private token>"}
+```
+
+Public-only book/trades subscriptions need no token. Private orders/fills require
+a read grant and use only the token's provisioned account; no account selector
+is accepted. Invalid supplied tokens reject the whole subscription. Never send
+tokens in URLs or log subscription frames. There are no WebSocket order commands,
+resubscriptions, or pushed balances; refresh balances through REST on private activity.
+
+Initial subscribed gives channel baselines. Book initialization sends snapshot_start,
+snapshot and snapshot_end before live absolute level updates (zero removes a level).
+Registration and capture use the command lock, so a concurrent trade appears in
+the snapshot or a subsequent update. All updates describe settled committed state.
+Public trades expose anonymous maker/taker exchange IDs; private order/fill payloads
+contain only the account's own activity. Channel sequences advance per nonempty
+committed bundle, public per channel and private per account/channel.
+
+Envelopes carry type, process_id, channel, sequence, commit_id, part and parts.
+Small bundles carry payload directly. Large bundles carry payload_fragment strings;
+concatenate parts in order and JSON-decode the complete payload before applying it.
+Snapshot markers bracket all parts. Never apply an incomplete bundle. Per-message
+outgoing size is at most 1 MiB. Channel gaps or interrupted bundles require recovery.
+
+Subscribe before reconciling: buffer incoming updates, GET /account/snapshot at
+commit S, fetch fills through its fill_high_watermark, deduplicate fills by fill_id,
+and apply order versions newer than S. Rebuild public book from each fresh stream
+snapshot. Trade history is retained per process and can be reconciled by stable
+trade_id; public trade pages return newest first within their fixed high watermark. A changed process_id invalidates old observations and cursors. There is
+no durable replay or exactly-once delivery. These are project schemas, inspired by
+Coinbase public level2_batch absolute quantities; immediate post-commit delivery,
+bearer auth, and private sequences differ from Coinbase's channels.
+
+Incoming messages are limited to 64 KiB. Pending live delivery is bounded to
+256 messages/1 MiB of backlog plus one in-flight send; overflow or a 5-second send
+timeout closes with 1013. The limits bound backlog, not a single bundle: a caught-up
+subscriber always accepts the next complete bundle, so multi-part bundles larger
+than 1 MiB are delivered rather than forcing reconnects. Initial immutable snapshots are sent directly in bounded
+parts while subsequent updates queue. Heartbeats every 10 seconds are queued behind
+earlier updates, so their baselines never run ahead of delivered sequences; they do
+not guarantee replay. Rejected credentials close 4401 and missing read grants or
+unprovisioned accounts close 4403, mirroring HTTP 401/403, with the stable error
+code (`authentication_required`, `invalid_token`, `insufficient_scope`,
+`account_not_provisioned`) as the close reason so clients can stop reconnecting.
+Malformed protocols close 1008, oversized input 1009, and unavailable trading 1013. Closing delivery never
+undoes a committed trade. Subscriber cleanup survives ASGI cancellation.
+
+The locked websockets runtime backend enables actual Uvicorn WebSockets; AnyIO
+provides cancellation-safe cleanup. Run one process/worker. HTTP/WebSocket tests
+cover both command/subscription orderings, owner isolation, self-trade updates,
+ordered multiple fills, reconnect, restart, bounds, timeout and cleanup. A real
+Uvicorn loopback demo observed all four event channels and Alice's 800 cash/2 units
+with zero holds; restart restored configured allocations and unchanged token identity.
+TLS, proxies and production slow networks are not established by these local checks.
