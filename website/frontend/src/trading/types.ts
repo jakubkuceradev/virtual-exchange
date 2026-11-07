@@ -118,6 +118,10 @@ export type Trading = {
   busy: boolean;
   /** Submission whose outcome is unknown; blocks new submissions until resolved. */
   unresolved: string | null;
+  /** Re-check an unresolved submission (resync, then look it up by client ID). */
+  checkUnresolved: () => void;
+  /** Present once the unresolved order was not found after a resync. */
+  dismissUnresolved: (() => void) | null;
   feedback: Outcome | null;
   clearFeedback: () => void;
   submit: (input: OrderInput) => Promise<Outcome>;

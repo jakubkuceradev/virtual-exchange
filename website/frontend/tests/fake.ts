@@ -32,6 +32,7 @@ type Reply = { status: number; body: unknown };
 type Pending = {
   path: string;
   auth: string | null;
+  body: unknown;
   resolve: (reply: Reply) => void;
   reject: (error: Error) => void;
 };
@@ -42,12 +43,15 @@ export function harness() {
   let now = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
   let nextTimer = 1;
+  let uuids = 0;
   const fetcher = (input: string, init?: RequestInit) =>
     new Promise<Response>((resolve, reject) => {
       const headers = (init?.headers ?? {}) as Record<string, string>;
       requests.push({
         path: input.replace(/^\/exchange/, ''),
         auth: headers.Authorization ?? null,
+        body:
+          typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
         resolve: ({ status, body }) =>
           resolve(new Response(JSON.stringify(body), { status })),
         reject,
@@ -69,6 +73,11 @@ export function harness() {
       timers.delete(handle as number);
     },
     random: () => 0.5,
+    randomBytes: (bytes) => {
+      for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 37 + uuids) & 0xff;
+      uuids++;
+      return bytes;
+    },
   };
   const session = new LiveSession(env);
   const flush = async () => {

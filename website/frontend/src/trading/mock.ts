@@ -161,6 +161,8 @@ export function useMockSource(): TradingSource {
     trading: {
       busy: false,
       unresolved: null,
+      checkUnresolved: () => {},
+      dismissUnresolved: null,
       feedback,
       clearFeedback: () => setFeedback(null),
       submit: async (input) => {

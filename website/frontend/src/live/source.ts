@@ -22,6 +22,7 @@ export function createBrowserSession() {
     setTimeout: (callback, ms) => window.setTimeout(callback, ms),
     clearTimeout: (handle) => window.clearTimeout(handle as number),
     random: Math.random,
+    randomBytes: (bytes) => crypto.getRandomValues(bytes),
   });
 }
 
@@ -39,16 +40,16 @@ export function useLiveSource(): TradingSource {
     account: view.account,
     notice: view.notice,
     trading: {
-      ...view.commands,
-      clearFeedback: () => {},
-      submit: async () => ({
-        kind: 'rejected',
-        message: 'Order entry is not connected yet.',
-      }),
-      cancel: async () => ({
-        kind: 'rejected',
-        message: 'Order cancellation is not connected yet.',
-      }),
+      busy: view.commands.busy,
+      unresolved: view.commands.unresolved,
+      feedback: view.commands.feedback,
+      checkUnresolved: session.checkUnresolved,
+      dismissUnresolved: view.commands.canDismiss
+        ? session.dismissUnresolved
+        : null,
+      clearFeedback: session.clearFeedback,
+      submit: session.submit,
+      cancel: session.cancel,
     },
     session: {
       connect: (token) => session.connect(token),
