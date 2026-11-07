@@ -26,7 +26,8 @@ backend and consumes exchange data; see [public interfaces](/public-interfaces.m
 ## Current status
 
 The repository contains public-interface placeholders, a Python API scaffold,
-independent exchange/backend health endpoints, development
+independent exchange/backend health endpoints, exchange bearer authentication
+and an identity endpoint, development
 checks, CI configuration, Docker/Compose support, and project documentation.
 An internal [matching core](/matching-core.md) now handles sequential in-memory
 limit orders. Participant order handling, settlement, public market data, and
@@ -40,12 +41,12 @@ The exchange/website public boundary is agreed. See [the visual overview](overvi
 
 | Responsibility | Intended role | Decision still needed |
 | --- | --- | --- |
-| Public API and authentication | Accept authenticated participant requests and expose exchange information | Transport, credentials, endpoints, limits, and bot permissions |
+| Public API and authentication | Bearer authentication and identity implemented; trading routes deferred | Participant trading endpoints and limits |
 | Order book and matching | Implemented sequential in-memory limit orders; see [matching core](/matching-core.md) | Concurrency, persistence, additional order types |
 | Accounts and settlement | Represent balances, positions, and the effects of fills | Starting funds, asset allocation, borrowing, shorting, fees |
 | Market data | Expose quotes, order-book information, and trades | Data depth, history, streaming versus polling |
 | Website backend: competition and rankings | Rank participants continuously and by period from exchange data | Metrics, valuation, period boundaries, eligibility, bot inclusion |
-| Private bot clients | Submit orders under essentially the same trading rules, with effectively unlimited money | Special authentication, funding mechanism, any other exceptions, and initial liquidity policy |
+| Private bot clients | Submit orders under essentially the same trading rules, with effectively unlimited money | Funding mechanism, other exceptions, and initial liquidity policy |
 
 Persistence, recovery, and operational requirements have not yet been specified. A public-facing website and account-registration flow have not yet been defined.
 

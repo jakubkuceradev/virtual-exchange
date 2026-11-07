@@ -28,20 +28,21 @@ image. The frontend stack remains deferred.
 
 ## Exchange interfaces
 
-The Python callable signatures exist, but every new operation raises
-NotImplementedError without side effects. None is exposed as an HTTP endpoint.
+Participant trading and market-data callable signatures remain stubs that raise
+NotImplementedError without side effects. Authentication is implemented; see
+[authentication](/authentication.md) for configuration and HTTP semantics.
 Keyword-only arguments identify the caller's intent. Return types are named,
 immutable standard-library dataclasses, with tuples for collections, Decimal
 prices/quantities, and explicit None for missing market observations. They define
-field shapes, not runtime business validation. Order/credential request fields,
-error taxonomy, pagination, and execution behavior remain for later slices.
+field shapes; authentication validates configured credentials at runtime. Trading
+request fields, pagination, and participant execution behavior remain for later slices.
 Pydantic request/response validation belongs at future HTTP boundaries; core
 records stay independent of the web framework.
 
 | Public module | Intended inputs and operations | Intended outputs and failures |
 | --- | --- | --- |
-| virtual_exchange.api | create_app; future HTTP requests | The app is implemented with GET /health. Future routes translate requests and results. Other routes return 404 today. |
-| virtual_exchange.auth | authenticate(credentials) | Identity and permissions, or authentication failure. No trading balance ownership. |
+| virtual_exchange.api | create_app; future HTTP requests | GET /health is public; GET /identity authenticates bearer credentials. Other routes return 404 today. |
+| virtual_exchange.auth | Authenticator.from_config; authenticate(token); require_permission | Implemented immutable identity and grants, or sanitized auth/permission/configuration failure. No trading balance ownership. |
 | virtual_exchange.exchange | submit_order(account_id, request_id, order), cancel_order(account_id, request_id, order_id), get_order, list_orders, list_fills, get_balances, list_instruments | Complete operation results or meaningful rejection/not-found/access failures. Never expose private reservation/matching/settlement steps to callers. |
 | virtual_exchange.market_data | get_order_book(instrument_id), list_trades(instrument_id), get_ticker(instrument_id) | Public book/trade observations; explicit absence of a last price before trading. Freshness, sequence and recovery contracts remain to be defined. |
 
@@ -105,11 +106,11 @@ Trading clients -> exchange API -> authentication -> complete trading operation
 Exchange published market/account data -> website backend -> website frontend
 ```
 
-Account IDs must eventually come from trusted authentication; passing a string
-today grants no access because every stub fails. Authorization remains the
+Authentication establishes trusted account IDs. Passing an account string to
+a trading stub grants no access; trading operations remain unimplemented. Authorization remains the
 exchange interface's responsibility, not a claim established by type annotations.
 
-The integration flow is planned. Public placeholders do not authenticate, match, settle,
+The integration flow is planned. Trading/market-data placeholders do not match, settle,
 publish, or score. The backend health example runs without exchange imports,
 network calls, or an event bus. Root Compose starts both independent APIs.
 
