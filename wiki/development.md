@@ -7,8 +7,9 @@ title: Development and Project Layout
 
 The exchange has health and authenticated identity endpoints; the website
 backend has a health-only API. Each owns its dependencies, tests, and image.
-Funded REST and WebSocket trading are implemented; competition is deferred and
-the frontend remains a placeholder.
+Funded REST and WebSocket trading are implemented; competition is deferred.
+The frontend has a React + TypeScript + Vite / headless Mantine preview with
+four interactive fixture views, based on the approved HTML mock.
 
 ## Local setup
 
@@ -42,6 +43,43 @@ Keep loopback binding for local development. Uvicorn reports invalid arguments
 and bind failures with nonzero exit status. The exchange reads private
 authentication configuration selected by EXCHANGE_AUTH_CONFIG; see [authentication](/authentication.md). No environment-file
 loader is provided.
+
+## Website frontend
+
+Use Node 26.13.0 LTS (pinned in website/frontend/.nvmrc). From website/frontend,
+run `npm ci` and `npm run dev`, then open http://127.0.0.1:5173/. The React
+preview includes Overview, Trade, Leaderboard, and API / Account with headless
+Mantine controls and disposable local state. It has no backend dependency or
+environment configuration. CSS Modules and local font
+assets preserve the reviewed design direction; Mantine CSS is not imported.
+
+`npm run check`, `npm test`, and `npm run build` validate lint/format, shared
+React/reference state, and strict types/production packaging. After building, install the
+Chromium browser with `npx playwright install chromium` and run
+`npm run test:browser`. These browser checks exercise all four views, keyboard
+navigation, order and credential flows, ranking periods, missing observations,
+and responsive layout.
+CI runs these frontend checks independently. See the
+[frontend guide](../website/frontend/README.md) for ports and local browser options.
+
+## Website design preview
+
+From the repository root, use Python's static server:
+
+```sh
+python3 -m http.server 4173 --bind 127.0.0.1 --directory website/frontend/design
+```
+
+Open http://127.0.0.1:4173/. Overview, Trade, Leaderboard, and API / Account
+use fictional sample data and disposable local interactions; no backend is
+needed. Reload resets the demo. Add `?scenario=no-trades#trade` to review empty
+market/account observation states. Ctrl+C stops the server.
+
+The [frontend README](../website/frontend/README.md) links desktop/mobile
+screenshots and describes sample interactions and unresolved production policies.
+With Node 26.13+ (see `.nvmrc`), run `node --test website/frontend/tests/demo.test.mjs` for the
+focused demo-state tests. These do not establish real exchange integration.
+The HTML mock state checks also run in frontend CI; screenshot review is manual.
 
 ## Website backend
 
@@ -145,12 +183,15 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | exchange/Dockerfile, exchange/.dockerignore | Exchange image and build context |
 | website/backend/src/pqc_website/api.py | Independent website API factory and health example |
 | website/backend/tests/, pyproject.toml, uv.lock, Dockerfile | Backend-owned checks, dependencies, and image |
-| website/frontend/ | Public responsibility outline; no framework/runtime yet |
+| website/frontend/src/, package.json, package-lock.json | React/headless Mantine views, independent npm dependencies and Vite build |
+| website/frontend/e2e/ | Production browser interaction checks |
+| website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
 | compose.yaml, .github/workflows/ | Shared local startup and CI |
 | wiki/ | Project knowledge and offline visual overview |
 
-The exchange and website backend run independently. The frontend will receive
-its own dependencies, tests, and build configuration when its stack is chosen.
+The exchange, website backend, and frontend build/run independently. The React
+preview and HTML reference use fixtures; production service integration remains
+pending.
 See [public interfaces](/public-interfaces.md) for operations and dependency
 boundaries. Funded operations and live delivery share one configured exchange
 instance; run one Uvicorn worker because all state is in-memory.

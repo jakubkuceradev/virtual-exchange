@@ -17,14 +17,33 @@ open. Both the exchange and website backend factories and health routes work.
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
 website/backend/      Independent health-only API; competition still planned
-website/frontend/     Browser experience; placeholder
+website/frontend/     Four-view React preview and approved HTML design reference
 ```
 
 The website backend consumes published exchange APIs/data. It imports no exchange
 implementation and reads no exchange database. The exchange has no dependency on
 competition or website code. Bots are external exchange API clients.
 The backend uses an independent FastAPI/Uvicorn package, tests, lockfile, and
-image. The frontend stack remains deferred.
+image. The frontend preview uses React + TypeScript + Vite with
+HeadlessMantineProvider and custom CSS Modules. Overview, Trade,
+Leaderboard, and API / Account use typed fixture state, accessible SVG charts,
+hash navigation, and headless controls. No service calls or persistence are added.
+The [frontend integration map](../website/frontend/INTEGRATION.md) distinguishes
+mocked backend data/commands, provisional frontend assumptions, and implemented
+UI behavior. Matching source annotations must be updated as each real API
+responsibility replaces its mock; visual completeness does not imply integration.
+
+**Agreed live-trading routing (not yet implemented).** For live browser trading,
+the frontend calls the exchange's published REST and WebSocket APIs directly
+through same-origin paths that a development/local serving proxy forwards to
+the exchange. No website-backend business API sits in this path. Participants
+enter an existing exchange token, which stays in tab memory only (no web storage,
+cookies, URL, or compiled secret). Public market data is visible before
+connecting. Live mode shows unavailable states for valuation, performance,
+rankings, and credential management rather than fixtures, and the mocked
+frontend stays usable for design work. Exact path prefixes, proxy implementation,
+and client state organization remain architecture choices. Competition data
+will still come from the website backend once it exists.
 
 ## Exchange interfaces
 
@@ -61,7 +80,7 @@ conversion owner; balances and private observations are not public payloads.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions and website-backend responses | Participant views and competition presentation. Browser trading/data routing and framework remain undecided. |
+| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state (agreed); website-backend responses for competition data (planned) | Four React/headless Mantine views with fixture interactions and an independent approved HTML reference. Live exchange integration is agreed but not implemented. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account
@@ -79,6 +98,21 @@ Exchange published market/account data -> website backend -> website frontend
 Authentication establishes trusted account IDs; complete trading operations enforce
 permissions and ownership. The backend health app remains independent of exchange
 imports/network dependencies; website integration and competition are deferred.
+
+The HTML preview in website/frontend/design runs independently with fixed fixtures
+and disposable local order/credential interactions. It makes no service requests,
+implements no production policies, and exposes no competitor holdings or individual
+histories. The approved mock uses square-cornered boxes and
+controls, subtle surface contrast, and shared borders between related panels.
+Introductory headings are omitted, with original panel padding retained. Locally
+bundled Space Grotesk, Inter, and JetBrains Mono align typography with the club
+website. The monospace header/buttons and thin Prague Quant Club footer include
+Instagram and LinkedIn links. The fictional asset is Quant Coin (QC), quoted in
+EUR. Only the final mock design is included.
+See [frontend review instructions](../website/frontend/README.md) for
+startup, desktop/mobile screenshots, sample scenarios, and verification limits.
+
+Root Compose starts both independent APIs.
 
 See [development setup](/development.md) for commands and
 [architecture principles](/architecture-principles.md) for the design rationale.

@@ -10,8 +10,8 @@ Project scope, development priorities, and requirements maintained here; the REA
 
 - [Funded trading](/trading-slice.md) — Funded REST trading, live observations, recovery, and restart rules.
 - [Authentication](/authentication.md) — Configured bearer tokens, identity endpoint, grants, and restart lifecycle.
-- [Public interfaces](public-interfaces.md) — Experimental exchange/website contracts, public types, and current status.
-- [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
+- [Public interfaces](public-interfaces.md) — Experimental contracts, public types, current status, four-view React preview, mock integration boundaries, and frontend stack.
+- [Development setup](development.md) — Exchange/backend startup, frontend environment, current versions, independent checks, and containers.
 - [Visual overview](overview.html) — Dark visual document with module interactions and the first vertical slice.
 - [Project scope](project-scope.md) — Purpose, public/private boundaries, conceptual responsibilities, and current status.
 - [Matching core](/matching-core.md) — In-memory limit book, decrement-and-cancel, identities, and verification.
