@@ -7,8 +7,8 @@ title: Development and Project Layout
 
 The exchange and website backend each have a runnable health-only API,
 independent dependencies, tests, and an image. Trading and competition behavior
-are not implemented. The frontend has a React + TypeScript + Vite / headless Mantine foundation.
-The approved HTML mocks remain the reference for the remaining view migration.
+are not implemented. The frontend has a React + TypeScript + Vite / headless Mantine preview
+with four interactive fixture views, based on the approved HTML mock.
 
 ## Local setup
 
@@ -44,16 +44,18 @@ or environment-file loader exists yet.
 ## Website frontend
 
 Use Node 26.13.0 LTS (pinned in website/frontend/.nvmrc). From website/frontend,
-run `npm ci` and `npm run dev`, then open http://127.0.0.1:5173/. The initial
-React shell displays fixture account data and headless Mantine tabs. It has no
-backend dependency or environment configuration. CSS Modules and local font
+run `npm ci` and `npm run dev`, then open http://127.0.0.1:5173/. The React
+preview includes Overview, Trade, Leaderboard, and API / Account with headless
+Mantine controls and disposable local state. It has no backend dependency or
+environment configuration. CSS Modules and local font
 assets preserve the reviewed design direction; Mantine CSS is not imported.
 
-`npm run check`, `npm test`, and `npm run build` validate lint/format, reference
-mock state, and strict types/production packaging. After building, install the
+`npm run check`, `npm test`, and `npm run build` validate lint/format, shared
+React/reference state, and strict types/production packaging. After building, install the
 Chromium browser with `npx playwright install chromium` and run
-`npm run test:browser`. These browser checks exercise tab keyboard behavior and
-responsive layout in the built app; they do not cover the full reference mocks.
+`npm run test:browser`. These browser checks exercise all four views, keyboard
+navigation, order and credential flows, ranking periods, missing observations,
+and responsive layout.
 CI runs these frontend checks independently. See the
 [frontend guide](../website/frontend/README.md) for ports and local browser options.
 
@@ -177,14 +179,14 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | exchange/Dockerfile, exchange/.dockerignore | Exchange image and build context |
 | website/backend/src/pqc_website/api.py | Independent website API factory and health example |
 | website/backend/tests/, pyproject.toml, uv.lock, Dockerfile | Backend-owned checks, dependencies, and image |
-| website/frontend/src/, package.json, package-lock.json | React/headless Mantine shell, independent npm dependencies and Vite build |
-| website/frontend/e2e/ | Production browser smoke checks |
+| website/frontend/src/, package.json, package-lock.json | React/headless Mantine views, independent npm dependencies and Vite build |
+| website/frontend/e2e/ | Production browser interaction checks |
 | website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
 | compose.yaml, .github/workflows/ | Shared local startup and CI |
 | wiki/ | Project knowledge and offline visual overview |
 
 The exchange, website backend, and frontend build/run independently. The React
-foundation and HTML reference use fixtures; full dashboard migration and service
-integration remain pending.
+preview and HTML reference use fixtures; production service integration remains
+pending.
 See [public interfaces](/public-interfaces.md) for operations and dependency
 boundaries. Internal exchange modules remain unspecified.

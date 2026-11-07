@@ -1,39 +1,128 @@
-/* Mantine is headless: layout, focus treatment, and tokens belong to the app. */
 :root {
-  font-family: Inter, sans-serif;
-  color: #e9ebf1;
-  background: #07080c;
   color-scheme: dark;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  --bg: #07080c;
   --surface: #090a0f;
-  --border: #292b38;
+  --surface-raised: #0c0e14;
+  --text: #e9ebf1;
   --muted: #a5aabc;
-  --accent: #5b5bf0;
-  --mono: "JetBrains Mono", monospace;
+  --border: #232631;
+  --indigo: #5b5bf0;
+  --indigo-light: #aaa9ff;
+  --green: #75d8ad;
+  --red: #f18d99;
+  --mono:
+    "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --heading: "Space Grotesk", var(--body);
 }
-
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none;
+}
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 24px;
+}
 body {
   margin: 0;
-  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px / 1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 470px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 55% 0%, #5b5bf00b, transparent 70%),
+    linear-gradient(#ffffff02 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff02 1px, transparent 1px);
+  background-size:
+    auto,
+    64px 64px,
+    64px 64px;
+  mask-image: linear-gradient(black, transparent);
 }
 a {
   color: inherit;
   text-decoration: none;
 }
-button {
+button,
+input {
   font: inherit;
+}
+button,
+a,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
   cursor: pointer;
 }
+button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+button,
+input {
+  color: var(--text);
+}
+input {
+  min-width: 0;
+}
+button,
+a {
+  touch-action: manipulation;
+}
 :focus-visible {
-  outline: 2px solid #a7a5ff;
+  outline: 2px solid var(--indigo-light);
   outline-offset: 4px;
 }
 ::selection {
-  background: #38367c;
-  color: white;
+  background: #5b5bf066;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--heading);
+}
+h1 {
+  font-size: clamp(30px, 3vw, 40px);
+  line-height: 1.2;
+  letter-spacing: -1.6px;
+  font-weight: 600;
+}
+h2 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.5;
+}
+h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+small {
+  font-size: max(0.6em, 11px);
+  color: var(--muted);
+  font-weight: 400;
+}
+strong {
+  font-weight: 500;
+}
+code,
+pre {
+  font-family: var(--mono);
 }

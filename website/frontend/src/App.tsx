@@ -1,132 +1,133 @@
-import { Tabs } from '@mantine/core';
-import styles from './App.module.css';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { Account } from './Account';
+import { DemoProvider } from './DemoContext';
+import { participant } from './fixtures.ts';
+import { Leaderboard } from './Leaderboard';
+import { Overview } from './Overview';
+import { cx } from './styles';
+import { Trade } from './Trade';
 
-// Disposable observations from the approved HTML mocks, without service calls.
-const account = {
-  name: 'Alex Morgan',
-  total: 130_450,
-  cash: 76_450,
-  reservedCash: 5_500,
-  quantity: 480,
-  price: 112.5,
-};
-const euros = new Intl.NumberFormat('en-IE', {
-  style: 'currency',
-  currency: 'EUR',
-});
-
-export function App() {
+const views = ['overview', 'trade', 'leaderboard', 'account'] as const;
+function subscribe(onChange: () => void) {
+  window.addEventListener('hashchange', onChange);
+  return () => window.removeEventListener('hashchange', onChange);
+}
+function Dashboard() {
+  const hash = useSyncExternalStore(subscribe, () => location.hash);
+  const [requested, anchor] = hash.slice(1).split('/');
+  const view = views.find((candidate) => candidate === requested) ?? 'overview';
+  const visited = useRef(false);
+  useEffect(() => {
+    document.title = `${view === 'account' ? 'API / Account' : view.charAt(0).toUpperCase() + view.slice(1)} · PQC Trading`;
+    if (visited.current || anchor === 'api-docs') {
+      const target =
+        anchor === 'api-docs' && view === 'account'
+          ? document.getElementById('api-docs')
+          : document.querySelector<HTMLElement>(`[data-view="${view}"] h1`);
+      if (anchor === 'api-docs') target?.scrollIntoView({ block: 'center' });
+      else window.scrollTo({ top: 0, behavior: 'instant' });
+      target?.focus({ preventScroll: true });
+    }
+    visited.current = true;
+  }, [view, anchor]);
   return (
-    <div className={styles.app}>
-      <a className={styles.skipLink} href="#main">
+    <>
+      {/* biome-ignore lint/a11y/useValidAnchor: The skip link navigates within the current view without changing the hash route. */}
+      <a
+        className={cx('skip-link')}
+        href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
+      >
         Skip to content
       </a>
-      <header className={styles.header}>
-        <a className={styles.brand} href="/" aria-label="PQC Trading overview">
-          pqc.trading<span>_</span>
+      <header className={cx('site-header')}>
+        <a
+          href="#overview"
+          className={cx('brand')}
+          aria-label="PQC Trading overview"
+        >
+          {'pqc.trading'}
+          <span className={cx('accent')}>{'_'}</span>
         </a>
         <nav aria-label="Main navigation">
-          <a className={styles.navLink} href="/" aria-current="page">
-            Overview
+          <a
+            href="#overview"
+            data-nav="overview"
+            aria-current={view === 'overview' ? 'page' : undefined}
+          >
+            {'Overview'}
+          </a>
+          <a
+            href="#trade"
+            data-nav="trade"
+            aria-current={view === 'trade' ? 'page' : undefined}
+          >
+            {'Trade'}
+          </a>
+          <a
+            href="#leaderboard"
+            data-nav="leaderboard"
+            aria-current={view === 'leaderboard' ? 'page' : undefined}
+          >
+            {'Leaderboard'}
+          </a>
+          <a
+            href="#account"
+            data-nav="account"
+            aria-current={view === 'account' ? 'page' : undefined}
+          >
+            {'API / Account'}
           </a>
         </nav>
-        <span className={styles.identity}>{account.name}</span>
+        <a
+          href="#account"
+          className={cx('identity')}
+          aria-label={`${participant.name}, account`}
+        >
+          <span className={cx('avatar')}>{participant.initials}</span>
+          <span className={cx('identity-name')}>{participant.name}</span>
+          <span className={cx('muted')} aria-hidden="true">
+            {'⌄'}
+          </span>
+        </a>
       </header>
-      <main id="main" className={styles.main} tabIndex={-1}>
-        <h1 className={styles.srOnly}>Overview</h1>
-        <div className={styles.metrics}>
-          <article className={styles.metric}>
-            <h2>Total account value</h2>
-            <p>{euros.format(account.total)}</p>
-          </article>
-          <article className={styles.metric}>
-            <h2>Available cash</h2>
-            <p>{euros.format(account.cash - account.reservedCash)}</p>
-          </article>
-          <article className={styles.metric}>
-            <h2>QC holdings</h2>
-            <p>
-              {account.quantity} <small>QC</small>
-            </p>
-          </article>
-        </div>
-        <section className={styles.panel} aria-labelledby="account-title">
-          <div className={styles.panelHeading}>
-            <h2 id="account-title">Your account</h2>
-            <span className={styles.sample}>Sample data</span>
-          </div>
-          <Tabs
-            defaultValue="holdings"
-            classNames={{
-              list: styles.tabList,
-              tab: styles.tab,
-              panel: styles.tabPanel,
-            }}
-          >
-            <Tabs.List aria-label="Account details">
-              <Tabs.Tab value="holdings">Holdings</Tabs.Tab>
-              <Tabs.Tab value="cash">Cash</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="holdings">
-              <dl className={styles.details}>
-                <div>
-                  <dt>Asset</dt>
-                  <dd>
-                    Quant Coin <span>QC</span>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Quantity</dt>
-                  <dd>{account.quantity} QC</dd>
-                </div>
-                <div>
-                  <dt>Price</dt>
-                  <dd>{euros.format(account.price)}</dd>
-                </div>
-                <div>
-                  <dt>Value</dt>
-                  <dd>{euros.format(account.quantity * account.price)}</dd>
-                </div>
-              </dl>
-            </Tabs.Panel>
-            <Tabs.Panel value="cash">
-              <dl className={styles.details}>
-                <div>
-                  <dt>Total cash</dt>
-                  <dd>{euros.format(account.cash)}</dd>
-                </div>
-                <div>
-                  <dt>Reserved in orders</dt>
-                  <dd>{euros.format(account.reservedCash)}</dd>
-                </div>
-                <div>
-                  <dt>Available cash</dt>
-                  <dd>{euros.format(account.cash - account.reservedCash)}</dd>
-                </div>
-              </dl>
-            </Tabs.Panel>
-          </Tabs>
-        </section>
+      <main id="main" tabIndex={-1}>
+        <Overview active={view === 'overview'} />
+        <Trade active={view === 'trade'} />
+        <Leaderboard active={view === 'leaderboard'} />
+        <Account active={view === 'account'} />
       </main>
-      <footer className={styles.footer}>
-        <a href="https://praguequantclub.org/">Prague Quant Club</a>
-        <div>
+      <footer className={cx('site-footer')}>
+        <a className={cx('footer-brand')} href="https://praguequantclub.org/">
+          {'Prague Quant Club'}
+        </a>
+        <nav aria-label="Club social links">
           <a
             href="https://instagram.com/praguequantclub"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener"
           >
-            Instagram ↗
+            {'Instagram'}
           </a>
           <a
             href="https://linkedin.com/company/prague-quant-club"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener"
           >
-            LinkedIn ↗
+            {'LinkedIn'}
           </a>
-        </div>
+        </nav>
       </footer>
-    </div>
+    </>
+  );
+}
+export function App() {
+  return (
+    <DemoProvider>
+      <Dashboard />
+    </DemoProvider>
   );
 }

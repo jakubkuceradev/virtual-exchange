@@ -4,7 +4,8 @@ A [Prague Quant Club](https://praguequantclub.org/) project: a 24/7 online hacka
 
 The exchange and website backend have runnable health-only APIs. Trading
 and competition behavior remain unimplemented. The website frontend has a
-React/Vite/headless Mantine foundation and reviewed HTML mocks. Public interfaces
+four-view React/Vite/headless Mantine preview with fixture interactions and an
+approved HTML design reference. Public interfaces
 are experimental and not yet finalized.
 
 ## Run locally

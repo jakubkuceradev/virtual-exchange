@@ -1,11 +1,11 @@
 # Participant frontend
 
-The React application is a buildable foundation using **React 19.3.1,
+The interactive React preview uses **React 19.3.1,
 TypeScript 7.0.2, Vite 8.3.6, and Mantine 9.7.5**. Versions were checked against
 the npm stable release tags on 2026-11-07 and are pinned in package.json and the
-npm lockfile. The reviewed HTML mocks remain the reference for the four-view
-migration; the React application currently implements only the account shell,
-fixture balances/holdings, and keyboard-accessible account tabs.
+npm lockfile. The approved HTML mock has been migrated into Overview, Trade, Leaderboard,
+and API / Account views. Navigation, limit orders/cancellation, period controls,
+and dummy credentials use disposable local state; reload resets the session.
 
 ## Run the React application
 
@@ -24,7 +24,7 @@ calls. The server binds to loopback and fails if its port is occupied.
 ```sh
 npm run check          # Biome lint and formatting
 npm run typecheck     # strict TypeScript, including tooling and browser tests
-npm test              # existing HTML mock state checks
+npm test              # shared state regressions for React and HTML reference
 npm run build         # typecheck and production bundle in dist/
 npx playwright install chromium
 npm run test:browser  # production preview, desktop and mobile Chromium
@@ -36,7 +36,7 @@ first and leave that port free. On Linux, browser system dependencies can be
 installed with `npx playwright install --with-deps chromium`.
 `npm run format` applies formatting to application/configuration/test sources.
 The frontend CI job installs the lockfile, checks formatting/lint, runs the
-mock-state tests, builds, and runs the browser smoke checks.
+shared state tests, builds, and runs desktop/mobile browser interaction checks.
 
 `src/main.tsx` owns the React root and `HeadlessMantineProvider`. Mantine CSS is
 never imported: global tokens/reset live in `src/global.css`, and component
@@ -46,16 +46,45 @@ assets and bundled by Vite; distribution licenses are included under
 `public/licenses/fonts/` and copied to the build. Biome handles lint/format independently of the
 TypeScript compiler; `tsc` checks types and Vite handles bundling.
 
-The remaining Overview panels, Trade, Leaderboard, and API / Account views,
-application routing, and real backend integration are subsequent implementation
-work. The production build contains only the React app, not the reference HTML
-mocks or historical snapshots. No backend contract is implied by the fixture.
+`src/demo.ts` owns the typed in-memory interaction model; `DemoContext.tsx`
+provides React state snapshots. The four view components render that state,
+`Trading.tsx` owns the ticket/book/orders/fills controls, `Standings.tsx` owns
+period controls and public summary rows, and `Charts.tsx` renders accessible SVG.
+Mantine's headless buttons retain custom styles and native keyboard semantics.
+Hash routes (`#overview`, `#trade`, `#leaderboard`, `#account`, and
+`#account/api-docs`) support direct links and browser history. Form values,
+selected period, orders, balances, and credentials survive view changes.
+
+`?scenario=no-trades#trade` demonstrates unavailable price/history/ranking data.
+Orders can rest without fabricating executions. Valuation uses the documented
+sample snapshot; charts and standings stay fixed after local fills. Production
+joining, authentication, trading integration, and competition policies remain
+future work. The build contains only the React app, not the reference HTML mock.
+
+## React screenshots and verification
+
+Full-page Chromium captures at 1440 × 1000 desktop and 390 × 844 mobile:
+
+| View | Desktop | Mobile |
+| --- | --- | --- |
+| Overview | [Screenshot](previews/react/desktop-overview.png) | [Screenshot](previews/react/mobile-overview.png) |
+| Trade | [Screenshot](previews/react/desktop-trade.png) | [Screenshot](previews/react/mobile-trade.png) |
+| Leaderboard | [Screenshot](previews/react/desktop-leaderboard.png) | [Screenshot](previews/react/mobile-leaderboard.png) |
+| API / Account | [Screenshot](previews/react/desktop-account.png) | [Screenshot](previews/react/mobile-account.png) |
+
+Sixteen state checks run the same eight regression scenarios against the React
+model and the independent HTML reference. Twenty browser checks cover all views,
+direct links/history, keyboard navigation, reservations/cancellation, partial
+fills, invalid input, sell holdings, periods, real clipboard copy and denied-copy
+fallback, credential lifecycle, and missing observations. Page overflow is checked
+at 320, 390, 820, 1024, and 1440px. Evidence is local Chromium execution with
+fixtures; real backend integration and other browsers have not been verified.
 
 ## Reviewed HTML mocks
 
 Overview, Trade, Leaderboard, and API / Account use fixed sample observations and
 local in-memory interactions. They run independently of React and remain
-available during migration.
+available as the visual and interaction reference.
 
 ## Open the design preview
 
@@ -155,14 +184,15 @@ baseline for the component implementation.
 
 ## Focused checks
 
-With Node.js 24 or newer, no dependency installation is needed:
+With the pinned Node.js runtime, no dependency installation is needed for the
+state-only checks:
 
 ```sh
 node --test website/frontend/tests/demo.test.mjs
 node --check website/frontend/design/app.js
 ```
 
-The eight executable tests cover reservations, fill prices/quantities, partial
+The shared state scenarios cover reservations, fill prices/quantities, partial
 and complete execution, sell limits, cancellation, rejection without mutation,
 exhausted liquidity, and dummy credential lifecycle. Run the test file directly
 with `node website/frontend/tests/demo.test.mjs` to see every named assertion group
@@ -174,8 +204,8 @@ rejection, credential lifecycle, keyboard navigation, deep links/back navigation
 reduced motion, and no-trades states. All four views were checked for page
 horizontal overflow at 320, 390, 820, 1024, and 1440px; desktop/mobile screenshots
 were inspected. This is local browser evidence, not real backend integration or
-cross-browser/accessibility certification. The frontend CI also runs these state checks; the React browser smoke checks
-cover the new shell only, not the complete HTML reference.
+cross-browser/accessibility certification. The frontend CI runs the shared state scenarios and the React interaction
+checks; it does not automate the complete HTML reference browser flow.
 
 Source: `design/index.html` owns structure, `styles.css` owns presentation,
 `fixtures.js` owns sample observations, `demo.js` owns disposable interaction
