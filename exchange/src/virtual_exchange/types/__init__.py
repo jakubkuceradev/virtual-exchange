@@ -14,6 +14,12 @@ from virtual_exchange.types.matching import (
     Execution,
     MatchingResult,
 )
+from virtual_exchange.types.operations import (
+    Acceptance,
+    AccountSnapshot,
+    Cancellation,
+    LimitOrder,
+)
 from virtual_exchange.types.trading import (
     Balance,
     Fill,
@@ -25,6 +31,10 @@ from virtual_exchange.types.trading import (
 )
 
 __all__ = [
+    "Acceptance",
+    "AccountSnapshot",
+    "Cancellation",
+    "LimitOrder",
     "AuthenticatedIdentity",
     "Balance",
     "BookLevel",

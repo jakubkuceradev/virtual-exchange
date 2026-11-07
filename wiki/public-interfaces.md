@@ -28,8 +28,10 @@ image. The frontend stack remains deferred.
 
 ## Exchange interfaces
 
-Participant trading and market-data callable signatures remain stubs that raise
-NotImplementedError without side effects. Authentication is implemented; see
+The experimental trading stubs are replaced by the app-owned
+[funded Exchange](/trading-slice.md) instance API. Legacy market-data module
+functions still raise NotImplementedError; public observations are available
+through Exchange. Authentication is implemented; see
 [authentication](/authentication.md) for configuration and HTTP semantics.
 Keyword-only arguments identify the caller's intent. Return types are named,
 immutable standard-library dataclasses, with tuples for collections, Decimal
@@ -55,8 +57,8 @@ interface. Funding mechanisms and persistent storage remain undefined; matching
 now has its own internal implementation. Unlimited bot money is a future funding policy;
 it gives no extra matching priority.
 
-Trading callable definitions live in virtual_exchange.exchange.interface;
-virtual_exchange.exchange re-exports them, preserving the caller-facing imports.
+Trading callable definitions live in virtual_exchange.exchange.service;
+virtual_exchange.exchange exports Exchange. Module-level trading calls are removed.
 Package initializers contain only documentation, imports/exports, and metadata.
 Use absolute imports only; Ruff rejects relative imports in both projects.
 Define __all__ only in __init__.py; callable modules import the types used by
