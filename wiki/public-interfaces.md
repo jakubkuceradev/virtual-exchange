@@ -33,17 +33,18 @@ mocked backend data/commands, provisional frontend assumptions, and implemented
 UI behavior. Matching source annotations must be updated as each real API
 responsibility replaces its mock; visual completeness does not imply integration.
 
-**Agreed live-trading routing (not yet implemented).** For live browser trading,
-the frontend calls the exchange's published REST and WebSocket APIs directly
-through same-origin paths that a development/local serving proxy forwards to
-the exchange. No website-backend business API sits in this path. Participants
+**Live trading routing (implemented).** The frontend calls the exchange's
+published REST and WebSocket APIs through same-origin `/exchange/*` paths (the
+WebSocket at `/exchange/ws`); the Vite dev/preview server forwards them to
+`EXCHANGE_URL` (default `http://127.0.0.1:8000`), read on the Node side and never
+compiled in. No website-backend business API sits in this path. Participants
 enter an existing exchange token, which stays in tab memory only (no web storage,
 cookies, URL, or compiled secret). Public market data is visible before
-connecting. Live mode shows unavailable states for valuation, performance,
-rankings, and credential management rather than fixtures, and the mocked
-frontend stays usable for design work. Exact path prefixes, proxy implementation,
-and client state organization remain architecture choices. Competition data
-will still come from the website backend once it exists.
+connecting. Live mode is the default build; `--mode mock` keeps the disposable
+demo for design work. Live mode shows unavailable states for valuation,
+performance, rankings, and credential management rather than fixtures.
+Competition data will still come from the website backend once it exists.
+See the [frontend integration map](../website/frontend/INTEGRATION.md).
 
 ## Exchange interfaces
 
@@ -80,7 +81,7 @@ conversion owner; balances and private observations are not public payloads.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state (agreed); website-backend responses for competition data (planned) | Four React/headless Mantine views with fixture interactions and an independent approved HTML reference. Live exchange integration is agreed but not implemented. |
+| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state; website-backend responses for competition data (planned) | Four React/headless Mantine views over one data source: live exchange (default) or the fixture demo (`--mode mock`); independent approved HTML reference. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account

@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Live browser–exchange integration**: The frontend now trades live: same-origin `/exchange` proxy to `EXCHANGE_URL`, token in tab memory, public book/trades, own orders/fills/balances, limit submit/cancel with client-ID reconciliation, reconnect and restart recovery. Live is the default build; `--mode mock` keeps the demo. Documented cross-machine LAN use and the live acceptance suite.
+
 * **Client-actionable wire fixes**: Bearer failures now return `{"error": code}` like other exchange errors; `/account/snapshot` channel baselines are an object, matching WebSocket control messages; refused subscriptions close 4401/4403 with the error code as reason instead of the protocol-error 1008.
 
 * **Stream review fixes**: Subscriber limits now bound backlog rather than single bundles, so multi-part bundles over 1 MiB reach caught-up subscribers instead of forcing reconnects; heartbeats are queued behind earlier updates.

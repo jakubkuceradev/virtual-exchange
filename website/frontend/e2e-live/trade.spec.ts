@@ -29,7 +29,7 @@ async function balances(page: Page) {
 test('Bob rests a sell, Alice sees it live and buys it: one execution for both', async ({
   browser,
   exchange,
-}) => {
+}, info) => {
   void exchange;
   const alice = await participant(browser, tokens.alice);
   const bob = await participant(browser, tokens.bob);
@@ -64,6 +64,24 @@ test('Bob rests a sell, Alice sees it live and buys it: one execution for both',
       reserved: '0.00 EUR reserved in orders',
       holdings: '8 QC',
     });
+  for (const [name, width, height] of [
+    ['desktop', 1440, 1000],
+    ['mobile', 390, 844],
+  ] as const) {
+    await alice.page.setViewportSize({ width, height });
+    for (const view of ['trade', 'overview']) {
+      await alice.page.goto(`/#${view}`);
+      expect(
+        await alice.page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await alice.page.screenshot({
+        path: info.outputPath(`${name}-${view}-after-trade.png`),
+        fullPage: true,
+      });
+    }
+  }
   expect([...alice.errors, ...bob.errors]).toEqual([]);
 });
 
