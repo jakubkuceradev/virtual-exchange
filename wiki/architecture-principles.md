@@ -16,8 +16,8 @@ implementation is described in [matching core](/matching-core.md). See
 Callers request complete order operations. The exchange will own validation,
 command ordering, matching, reservations, settlement, durable acceptance, and
 retry behavior behind that boundary. HTTP handlers must not coordinate private
-reserve/match/settle/save steps. Public placeholders describe these expectations;
-they implement none of this trading behavior yet.
+reserve/match/settle/save steps. The app-owned Exchange implements funded in-process operations through a private
+candidate commit boundary; persistence and crash durability remain deferred.
 
 Order state, balances, and executions must eventually be committed consistently
 before success. Merely sharing a process does not establish atomicity. Storage,
@@ -30,8 +30,8 @@ of balances. Future complete trading operations must validate and reserve funds
 before matching, then consistently settle executions and release reservations.
 HTTP handlers must not coordinate these private steps. The first milestone is
 in-memory, resets on restart, and tests supplied eligible orders directly;
-account integration follows separately. It establishes no crash durability or
-atomicity guarantee for the future combined account/matching operation.
+the funded integration now coordinates candidate account/matching state before
+publishing it. This establishes in-process isolation, not crash durability.
 
 ## Independent changes
 

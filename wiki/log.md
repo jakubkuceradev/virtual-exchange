@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Trading observations**: Added authenticated private/public WebSocket channels with settled post-commit bundles, gap-free snapshots, channel sequences, bounded queues, reconnect guidance, and cancellation-safe cleanup. Verified real Uvicorn HTTP/WebSocket trading and restart with synthetic credentials.
+
 * **Trading REST**: Connected configured funded exchange instances to submit/cancel, private account/recovery queries, and public book/trade observations. Added acceptance receipts, sanitized errors, and cursor/client-ID reconciliation.
 
 * **Funded exchange operations**: Added app-owned coordinated funding, exact settlement, candidate commit isolation, private queries, operator allocations, and account-scoped client-ID reconciliation. Network adapters follow in stacked changes.

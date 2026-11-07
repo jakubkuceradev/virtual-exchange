@@ -18,6 +18,7 @@ from virtual_exchange.exchange.configuration import (
 )
 from virtual_exchange.exchange.ledger import Ledger
 from virtual_exchange.exchange.matching import MatchingEngine
+from virtual_exchange.exchange.observations import Subscription, frames
 from virtual_exchange.types import (
     Acceptance,
     AccountSnapshot,
@@ -49,6 +50,7 @@ class _State:
     orders: dict[str, OrderSnapshot]
     fills: dict[str, tuple[Fill, ...]]
     clients: dict[tuple[str, str], str]
+    channels: dict[tuple[str, str], int]
     sequence: int = 0
 
     def fork(self) -> _State:
@@ -58,6 +60,7 @@ class _State:
             self.orders.copy(),
             self.fills.copy(),
             self.clients.copy(),
+            self.channels.copy(),
             self.sequence,
         )
 
@@ -81,6 +84,7 @@ class Exchange:
                 self.amounts.allocation(asset, cash=False),
             )
         self.process_id = str(uuid4())
+        self._subscribers: set[Subscription] = set()
         self._cursor_key = uuid4().bytes
         self._lock = asyncio.Lock()
         self._state = _State(
@@ -88,6 +92,7 @@ class Exchange:
             Ledger(values),
             {},
             dict.fromkeys(values, ()),
+            {},
             {},
         )
 
@@ -184,9 +189,177 @@ class Exchange:
             self._commit(candidate)
             return receipt
 
+    def _prepare_observations(
+        self, candidate: _State
+    ) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+        old = self._state
+        changes = []
+        previous = old.engine.get_order_book()
+        current = candidate.engine.get_order_book()
+        for side, before, after in (
+            ("buy", previous.bids, current.bids),
+            ("sell", previous.asks, current.asks),
+        ):
+            before_map = {level.price: level.quantity for level in before}
+            after_map = {level.price: level.quantity for level in after}
+            for price in sorted(
+                before_map.keys() | after_map.keys(), reverse=side == "buy"
+            ):
+                if before_map.get(price, Decimal(0)) != after_map.get(
+                    price, Decimal(0)
+                ):
+                    changes.append(
+                        {
+                            "side": side,
+                            "price": price,
+                            "quantity": after_map.get(price, Decimal(0)),
+                        }
+                    )
+        payloads = []
+        if changes:
+            payloads.append(("book", "", changes))
+        executions = candidate.engine.list_executions()[
+            len(old.engine.list_executions()) :
+        ]
+        if executions:
+            payloads.append(
+                (
+                    "trades",
+                    "",
+                    tuple(
+                        Trade(
+                            e.execution_id,
+                            e.instrument_id,
+                            e.price,
+                            e.quantity,
+                            e.executed_at,
+                            e.maker_order_id,
+                            e.taker_order_id,
+                        )
+                        for e in executions
+                    ),
+                )
+            )
+        for account in candidate.ledger.total:
+            orders = tuple(
+                o
+                for o in candidate.orders.values()
+                if o.account_id == account and o.commit_version == candidate.sequence
+            )
+            fills = candidate.fills[account][len(old.fills[account]) :]
+            if orders:
+                payloads.append(("orders", account, orders))
+            if fills:
+                payloads.append(("fills", account, fills))
+        bundles = []
+        for channel, account, payload in payloads:
+            key = channel, account
+            sequence = candidate.channels.get(key, 0) + 1
+            candidate.channels[key] = sequence
+            bundles.append(
+                (
+                    channel,
+                    account,
+                    frames(
+                        process_id=self.process_id,
+                        channel=channel,
+                        sequence=sequence,
+                        commit_id=candidate.sequence,
+                        kind="update",
+                        payload=payload,
+                    ),
+                )
+            )
+        return tuple(bundles)
+
     def _commit(self, candidate: _State) -> None:
-        """Replace state only after every financial effect and result is prepared."""
+        # Encoding can fail and must happen before any authoritative mutation.
+        bundles = self._prepare_observations(candidate)
         self._state = candidate
+        for subscription in self._subscribers:
+            messages = tuple(
+                message
+                for channel, account, batch in bundles
+                if channel in subscription.channels
+                and (not account or account == subscription.account_id)
+                for message in batch
+            )
+            subscription.offer(messages)
+
+    async def subscribe(
+        self, *, channels: frozenset[str], identity: AuthenticatedIdentity | None = None
+    ) -> Subscription:
+        async with self._lock:
+            if not channels or not channels <= {"book", "trades", "orders", "fills"}:
+                raise TradingError("invalid_channels")
+            account = None
+            if channels & {"orders", "fills"}:
+                if identity is None:
+                    raise TradingError("authentication_required", 401)
+                account = self._account(identity, Permission.READ)
+            baselines = {
+                channel: self._state.channels.get(
+                    (channel, account if channel in {"orders", "fills"} else ""), 0
+                )
+                for channel in sorted(channels)
+            }
+            initial = list(
+                frames(
+                    process_id=self.process_id,
+                    channel="control",
+                    sequence=0,
+                    commit_id=self._state.sequence,
+                    kind="subscribed",
+                    payload={"channels": baselines},
+                )
+            )
+            if "book" in channels:
+                book = self._state.engine.get_order_book()
+                for kind, payload in (
+                    ("snapshot_start", {}),
+                    ("snapshot", {"bids": book.bids, "asks": book.asks}),
+                    ("snapshot_end", {}),
+                ):
+                    initial.extend(
+                        frames(
+                            process_id=self.process_id,
+                            channel="book",
+                            sequence=baselines["book"],
+                            commit_id=self._state.sequence,
+                            kind=kind,
+                            payload=payload,
+                        )
+                    )
+            subscription = Subscription(channels, account, tuple(initial))
+            self._subscribers.add(subscription)
+            return subscription
+
+    async def unsubscribe(self, subscription: Subscription) -> None:
+        async with self._lock:
+            self._subscribers.discard(subscription)
+
+    async def heartbeat(self, subscription: Subscription) -> tuple[str, ...]:
+        async with self._lock:
+            baselines = {
+                channel: self._state.channels.get(
+                    (
+                        channel,
+                        subscription.account_id
+                        if channel in {"orders", "fills"}
+                        else "",
+                    ),
+                    0,
+                )
+                for channel in sorted(subscription.channels)
+            }
+            return frames(
+                process_id=self.process_id,
+                channel="control",
+                sequence=0,
+                commit_id=self._state.sequence,
+                kind="heartbeat",
+                payload={"channels": baselines},
+            )
 
     async def cancel_order(
         self, *, identity: AuthenticatedIdentity, order_id: str
@@ -225,7 +398,10 @@ class Exchange:
         )
 
     def _baselines(self, account: str) -> tuple[tuple[str, int], ...]:
-        return (("orders", 0), ("fills", 0))
+        return tuple(
+            (channel, self._state.channels.get((channel, account), 0))
+            for channel in ("orders", "fills")
+        )
 
     async def get_account_snapshot(
         self, *, identity: AuthenticatedIdentity
@@ -258,6 +434,7 @@ class Exchange:
         limit: int,
         cursor: str | None,
         high_watermark: int | None = None,
+        newest_first: bool = False,
     ) -> dict:
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise TradingError("invalid_limit")
@@ -298,7 +475,7 @@ class Exchange:
         return {
             "process_id": self.process_id,
             "commit_id": self._state.sequence,
-            "data": records[offset:end],
+            "data": (records[:high][::-1] if newest_first else records)[offset:end],
             "next_cursor": next_cursor,
             "high_watermark": high,
         }
@@ -378,5 +555,9 @@ class Exchange:
     async def list_trades(self, *, limit: int = 100, cursor: str | None = None) -> dict:
         async with self._lock:
             return self._page(
-                self._trades(), scope="trades", limit=limit, cursor=cursor
+                self._trades(),
+                scope="trades:newest",
+                limit=limit,
+                cursor=cursor,
+                newest_first=True,
             )

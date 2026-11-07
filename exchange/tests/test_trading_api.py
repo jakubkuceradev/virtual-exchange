@@ -217,3 +217,16 @@ def test_authentication_precedes_malformed_body(api):
     )
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_request"}
+
+
+def test_recent_trades_pages_keep_a_fixed_history_boundary(api):
+    for _ in range(3):
+        api.post("/orders", headers=headers("bob"), json=body("sell", quantity="1"))
+        api.post("/orders", headers=headers(), json=body(quantity="1"))
+    first = api.get("/trades?limit=1").json()
+    assert first["data"][0]["trade_id"] == "3"
+    api.post("/orders", headers=headers("bob"), json=body("sell", quantity="1"))
+    api.post("/orders", headers=headers(), json=body(quantity="1"))
+    rest = api.get("/trades", params={"cursor": first["next_cursor"]}).json()
+    assert [t["trade_id"] for t in rest["data"]] == ["2", "1"]
+    assert api.get("/trades?limit=1").json()["data"][0]["trade_id"] == "4"
