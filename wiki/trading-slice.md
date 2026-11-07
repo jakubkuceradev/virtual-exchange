@@ -99,7 +99,7 @@ Use one Uvicorn worker: state is process-local, not shared between workers.
 | DELETE /orders/{id} | trade + ownership; cancellation receipt |
 | GET /orders/{id} | read + ownership; snapshot, also supports client:<uuid> |
 | GET /orders, /fills, /balances | read; own observations only |
-| GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines |
+| GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines (`{"orders": n, "fills": n}`) |
 | GET /instruments, /book, /trades | public, ignores optional credentials |
 
 POST requires instrument_id, side, price and quantity; amounts must be canonical

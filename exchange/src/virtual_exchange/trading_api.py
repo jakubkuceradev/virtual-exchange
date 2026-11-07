@@ -145,7 +145,9 @@ def register_trading(
 
     @app.get("/account/snapshot")
     async def account(caller: Annotated[AuthenticatedIdentity, Depends(reader)]):
-        return wire(await service().get_account_snapshot(identity=caller))
+        snapshot = await service().get_account_snapshot(identity=caller)
+        # Channel baselines are a JSON object, as in WebSocket control messages.
+        return {**wire(snapshot), "channel_baselines": dict(snapshot.channel_baselines)}
 
     @app.get("/instruments")
     async def instruments():

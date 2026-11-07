@@ -247,6 +247,9 @@ def test_book_and_balances_report_the_commit_they_describe(api):
     assert book["commit_id"] == book["data"]["sequence"] == snapshot["commit_id"]
     assert balances["commit_id"] == snapshot["commit_id"]
     assert balances["data"] == snapshot["balances"]
+    baselines = snapshot["channel_baselines"]
+    assert set(baselines) == {"orders", "fills"}
+    assert all(type(value) is int for value in baselines.values())
 
 
 def test_amounts_serialize_in_plain_decimal_notation():
