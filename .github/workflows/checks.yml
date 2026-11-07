@@ -32,6 +32,25 @@ jobs:
       - run: uv run --locked ruff format --check .
       - run: uv build
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website/frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: website/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
   container:
     runs-on: ubuntu-latest
     steps:

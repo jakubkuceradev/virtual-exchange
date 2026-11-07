@@ -17,17 +17,33 @@ open. Both the exchange and website backend factories and health routes work.
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
 website/backend/      Independent health-only API; competition still planned
-website/frontend/     Interactive HTML design preview; React conversion planned
+website/frontend/     Four-view React preview and approved HTML design reference
 ```
 
 The website backend consumes published exchange APIs/data. It imports no exchange
 implementation and reads no exchange database. The exchange has no dependency on
 competition or website code. Bots are external exchange API clients.
 The backend uses an independent FastAPI/Uvicorn package, tests, lockfile, and
-image. The selected frontend stack is React + TypeScript + Vite with unstyled
-Mantine for the next round. The first HTML design preview is implemented; its
-visual review precedes the component-based round. Use Mantine headless components
-with custom styling when converting the reviewed design.
+image. The frontend preview uses React + TypeScript + Vite with
+HeadlessMantineProvider and custom CSS Modules. Overview, Trade,
+Leaderboard, and API / Account use typed fixture state, accessible SVG charts,
+hash navigation, and headless controls. No service calls or persistence are added.
+The [frontend integration map](../website/frontend/INTEGRATION.md) distinguishes
+mocked backend data/commands, provisional frontend assumptions, and implemented
+UI behavior. Matching source annotations must be updated as each real API
+responsibility replaces its mock; visual completeness does not imply integration.
+
+**Agreed live-trading routing (not yet implemented).** For live browser trading,
+the frontend calls the exchange's published REST and WebSocket APIs directly
+through same-origin paths that a development/local serving proxy forwards to
+the exchange. No website-backend business API sits in this path. Participants
+enter an existing exchange token, which stays in tab memory only (no web storage,
+cookies, URL, or compiled secret). Public market data is visible before
+connecting. Live mode shows unavailable states for valuation, performance,
+rankings, and credential management rather than fixtures, and the mocked
+frontend stays usable for design work. Exact path prefixes, proxy implementation,
+and client state organization remain architecture choices. Competition data
+will still come from the website backend once it exists.
 
 ## Exchange interfaces
 
@@ -89,7 +105,7 @@ trades do not contain private account/order identifiers.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions and website-backend responses | Four interactive HTML design views with sample data. React + TypeScript + Vite with unstyled Mantine is selected for the next round; production browser trading/data routing remains undecided. |
+| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state (agreed); website-backend responses for competition data (planned) | Four React/headless Mantine views with fixture interactions and an independent approved HTML reference. Live exchange integration is agreed but not implemented. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account
