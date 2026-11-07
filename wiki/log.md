@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Funded exchange operations**: Added app-owned coordinated funding, exact settlement, candidate commit isolation, private queries, operator allocations, and account-scoped client-ID reconciliation. Network adapters follow in stacked changes.
+
 * **Matching alignment**: Adopted decrement-and-cancel with explicit prevented/remaining/cancelled quantities, terminal-cancellation errors, and generated exchange IDs separate from optional client metadata. Updated acceptance examples and retained earlier executions and maker priority.
 
 * **Authentication**: Added app-owned bearer authentication, hashed private configuration, independent read/trade permissions, and GET /identity. Documented restart-based credential changes and container configuration; trading and funding remain separate.

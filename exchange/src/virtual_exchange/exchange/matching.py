@@ -5,6 +5,16 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
+from virtual_exchange.amounts import (
+    Amounts,
+    OrderRejected,
+)
+from virtual_exchange.amounts import (
+    decimal as _decimal,
+)
+from virtual_exchange.amounts import (
+    units as _units,
+)
 from virtual_exchange.types import (
     BookLevel,
     CancellationReason,
@@ -18,65 +28,30 @@ from virtual_exchange.types import (
 )
 
 
-class OrderRejected(ValueError):
-    """Reject invalid input or a terminal cancellation before changing state."""
-
-
 class OrderNotFound(KeyError):
     """Identify an order absent from this engine instance."""
-
-
-def _coefficient(value: Decimal) -> tuple[int, int]:
-    """Read an exact positive Decimal coefficient and exponent."""
-    parts = value.as_tuple()
-    coefficient = 0
-    for digit in parts.digits:
-        coefficient = coefficient * 10 + digit
-    return coefficient, int(parts.exponent)
-
-
-def _positive_decimal(value: object, name: str) -> Decimal:
-    if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
-        raise OrderRejected(f"{name} must be a finite positive Decimal")
-    return value
-
-
-def _units(value: Decimal, increment: Decimal) -> int:
-    coefficient, exponent = _coefficient(value)
-    step, step_exponent = _coefficient(increment)
-    difference = exponent - step_exponent
-    numerator = coefficient * 10 ** max(difference, 0)
-    denominator = step * 10 ** max(-difference, 0)
-    units, remainder = divmod(numerator, denominator)
-    if remainder:
-        raise OrderRejected("value must align with the configured increment")
-    return units
-
-
-def _decimal(units: int, increment: Decimal) -> Decimal:
-    coefficient, exponent = _coefficient(increment)
-    # Integer arithmetic and tuple construction never consult Decimal precision.
-    digits = Decimal(units * coefficient).as_tuple().digits
-    return Decimal((0, digits, exponent))
 
 
 class MatchingEngine:
     """Own a complete in-memory book; callers supply eligible orders sequentially."""
 
     def __init__(self, *, instrument: Instrument) -> None:
-        _positive_decimal(instrument.price_increment, "price_increment")
-        _positive_decimal(instrument.quantity_increment, "quantity_increment")
-        if (
-            not isinstance(instrument.instrument_id, str)
-            or not instrument.instrument_id
-        ):
-            raise OrderRejected("instrument_id must be a nonempty string")
+        Amounts(instrument)
         self._instrument = instrument
         self._orders: dict[str, OrderSnapshot] = {}
         # Insertion order is engine receipt order. Updating retains that priority.
         self._resting: dict[str, tuple[int, int]] = {}
         self._executions: list[Execution] = []
         self._sequence = 0
+
+    def fork(self) -> MatchingEngine:
+        """Copy mutable containers for a private coordinated trading candidate."""
+        candidate = MatchingEngine(instrument=self._instrument)
+        candidate._orders = self._orders.copy()
+        candidate._resting = self._resting.copy()
+        candidate._executions = self._executions.copy()
+        candidate._sequence = self._sequence
+        return candidate
 
     def submit(
         self,
@@ -91,13 +66,8 @@ class MatchingEngine:
         self._validate_id(account_id, "account_id")
         if client_order_id is not None:
             self._validate_id(client_order_id, "client_order_id")
-        if not isinstance(side, OrderSide):
-            raise OrderRejected("side must be an OrderSide")
-        ticks = _units(
-            _positive_decimal(price, "price"), self._instrument.price_increment
-        )
-        lots = _units(
-            _positive_decimal(quantity, "quantity"), self._instrument.quantity_increment
+        ticks, lots = Amounts(self._instrument).order(
+            side=side, price=price, quantity=quantity
         )
         order_id = str(uuid4())
         while order_id in self._orders:

@@ -26,13 +26,15 @@ class OrderBookSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class Trade:
-    """Describe a public execution without private account or order identifiers."""
+    """Describe an anonymous execution with exchange order linkage."""
 
     trade_id: str
     instrument_id: str
     price: Decimal
     quantity: Decimal
     executed_at: datetime
+    maker_order_id: str
+    taker_order_id: str
 
 
 @dataclass(frozen=True, slots=True)
