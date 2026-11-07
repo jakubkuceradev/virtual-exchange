@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Matching core**: Implemented the agreed sequential in-memory limit book, exact tick/lot arithmetic, immutable matching outcomes, cancellation, and cancel-newest self-trade prevention. Documented the internal contract and acceptance tests; account integration and participant trading remain deferred.
+
 * **Absolute imports**: Converted package imports to absolute paths and configured Ruff TID252 to reject all relative imports in both Python projects. Recorded the convention in AGENTS.md and the interface/development guides.
 
 ## 2026-11-06

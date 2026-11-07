@@ -9,6 +9,11 @@ from virtual_exchange.types.market_data import (
     Ticker,
     Trade,
 )
+from virtual_exchange.types.matching import (
+    CancellationReason,
+    Execution,
+    MatchingResult,
+)
 from virtual_exchange.types.trading import (
     Balance,
     Fill,
@@ -23,8 +28,11 @@ __all__ = [
     "AuthenticatedIdentity",
     "Balance",
     "BookLevel",
+    "CancellationReason",
+    "Execution",
     "Fill",
     "Instrument",
+    "MatchingResult",
     "OrderBookSnapshot",
     "OrderSide",
     "OrderSnapshot",

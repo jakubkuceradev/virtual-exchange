@@ -12,6 +12,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 - [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
 - [Visual overview](overview.html) — Dark visual document with module interactions and the first vertical slice.
 - [Project scope](project-scope.md) — Purpose, public/private boundaries, conceptual responsibilities, and current status.
+- [Matching core](/matching-core.md) — Implemented in-memory limit book, command contract, and verification.
 - [Development priorities](development-priorities.md) — Vertical slices and the first working trading flow.
 - [Exchange and bots](exchange-and-bots.md) — Fictional assets, price formation, API expectations, and bot rules.
 - [Exchange tradeoffs](exchange-tradeoffs.md) — Recommendations weighing first-slice realism against complexity; not yet agreed.

@@ -11,25 +11,27 @@ other project capabilities incrementally.
 ## Foundation
 
 The first implementation change establishes package structure, a runnable API
-health endpoint, checks, CI, and Docker/Compose startup. Exchange behavior is
+health endpoint, checks, CI, and Docker/Compose startup. Participant trading is
 still pending; see [development setup](/development.md).
 
 ## First trading slice
 
-The initial direction is an end-to-end trading flow: accept bids and asks
-through the public API, match compatible orders, and expose the resulting
-executions. Detailed order behavior still needs agreement before implementation.
+The first milestone implements an in-memory matching core, exercised directly
+with supplied eligible orders. It supports one instrument, sequential limit
+orders, best-price then receipt-order priority, maker-price executions, partial
+fills, cancellation, and cancel-newest self-trade prevention. State resets with
+a new engine instance. See [matching core](/matching-core.md) for usage and rules.
 
-Starting balances are easy to change later and should not block this slice.
-All discussed capabilities remain in scope, but complete ranking formulas,
-the full bot population, and richer supporting features can follow later.
+The eventual trading slice adds funding, reservations, settlement, and
+participant API access in follow-up PRs stacked above the matching core. The
+core does not require accounts, website, competition, or bots.
 
 ## Unresolved requirements
 
-Order types, matching priority, execution-price rules, cancellation behavior,
-and the minimum result/query interface remain open. A limit-orders-only first
-version with resting unfilled quantities was suggested by the assistant, but
-has not been accepted by the user.
+Account funding and participant API behavior need a separate specification.
+Starting allocations, credentials, endpoint shapes, retry behavior, persistence,
+and concurrent command ordering are not settled by the matching milestone.
+Complete ranking formulas and richer supporting features follow later.
 
-See [realism and complexity analysis](/exchange-tradeoffs.md) for recommendations
-on these choices. They remain proposals pending agreement.
+See [realism and complexity analysis](/exchange-tradeoffs.md) for recommendations;
+behavior beyond the agreed matching subset remains proposed.
