@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Stream review fixes**: Subscriber limits now bound backlog rather than single bundles, so multi-part bundles over 1 MiB reach caught-up subscribers instead of forcing reconnects; heartbeats are queued behind earlier updates.
+
 * **REST review fixes**: Required canonical unsigned decimal amount strings, emitted plain decimal notation, added commit IDs to /book and /balances, and served /balances without copying order history.
 
 * **Funded exchange review fixes**: Bounded decimal digits/scale before exact arithmetic; made command cost independent of retained history through overlay candidates and paged history queries; added maker/taker `liquidity` to fills; book snapshots report their commit. History will move to storage with persistence instead of staying in memory.

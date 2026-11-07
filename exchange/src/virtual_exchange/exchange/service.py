@@ -352,7 +352,8 @@ class Exchange:
         async with self._lock:
             self._subscribers.discard(subscription)
 
-    async def heartbeat(self, subscription: Subscription) -> tuple[str, ...]:
+    async def heartbeat(self, subscription: Subscription) -> None:
+        """Queue current baselines behind every earlier committed update."""
         async with self._lock:
             baselines = {
                 channel: self._state.channels.get(
@@ -366,13 +367,15 @@ class Exchange:
                 )
                 for channel in sorted(subscription.channels)
             }
-            return frames(
-                process_id=self.process_id,
-                channel="control",
-                sequence=0,
-                commit_id=self._state.sequence,
-                kind="heartbeat",
-                payload={"channels": baselines},
+            subscription.offer(
+                frames(
+                    process_id=self.process_id,
+                    channel="control",
+                    sequence=0,
+                    commit_id=self._state.sequence,
+                    kind="heartbeat",
+                    payload={"channels": baselines},
+                )
             )
 
     async def cancel_order(

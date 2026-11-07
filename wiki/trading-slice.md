@@ -165,11 +165,13 @@ Coinbase public level2_batch absolute quantities; immediate post-commit delivery
 bearer auth, and private sequences differ from Coinbase's channels.
 
 Incoming messages are limited to 64 KiB. Pending live delivery is bounded to
-256 messages/1 MiB plus one in-flight send; overflow or a 5-second send timeout
-closes with 1013. A bundle exceeding the live budget also requires reconnect and
-REST reconciliation. Initial immutable snapshots are sent directly in bounded
-parts while subsequent updates queue. Heartbeats every 10 seconds report current
-baselines; they do not guarantee replay. Malformed protocols/auth failures close
+256 messages/1 MiB of backlog plus one in-flight send; overflow or a 5-second send
+timeout closes with 1013. The limits bound backlog, not a single bundle: a caught-up
+subscriber always accepts the next complete bundle, so multi-part bundles larger
+than 1 MiB are delivered rather than forcing reconnects. Initial immutable snapshots are sent directly in bounded
+parts while subsequent updates queue. Heartbeats every 10 seconds are queued behind
+earlier updates, so their baselines never run ahead of delivered sequences; they do
+not guarantee replay. Malformed protocols/auth failures close
 1008, oversized input 1009, and unavailable trading 1013. Closing delivery never
 undoes a committed trade. Subscriber cleanup survives ASGI cancellation.
 

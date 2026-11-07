@@ -88,8 +88,9 @@ def register_streams(
                 deadline = loop.time() + observations.HEARTBEAT_SECONDS
                 while True:
                     if loop.time() >= deadline:
-                        for heartbeat in await exchange.heartbeat(subscription):
-                            await send(heartbeat)
+                        # Queued behind earlier updates so its baselines never
+                        # overtake them.
+                        await exchange.heartbeat(subscription)
                         deadline = loop.time() + observations.HEARTBEAT_SECONDS
                     try:
                         update = await asyncio.wait_for(

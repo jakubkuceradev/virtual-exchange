@@ -69,7 +69,10 @@ class Subscription:
         if self.failed.is_set():
             return
         size = sum(len(message.encode()) for message in messages)
-        if (
+        # Limits bound the backlog, not one bundle: a caught-up subscriber always
+        # accepts the next complete bundle, so multi-part bundles stay deliverable.
+        # The encoded frames are shared by all subscribers rather than copied.
+        if not self.queue.empty() and (
             self.queue.qsize() + len(messages) > self.max_messages
             or self.pending_bytes + size > self.max_bytes
         ):

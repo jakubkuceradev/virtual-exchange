@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from virtual_exchange.api import create_app
 from virtual_exchange.auth import Authenticator
@@ -103,6 +103,7 @@ def test_websocket_events_describe_settled_trade(api):
         ]
         trade = messages[1]["payload"][0]
         assert trade["maker_order_id"] == sell["order_id"]
+        assert [f["liquidity"] for f in messages[3]["payload"]] == ["taker"]
         assert trade["taker_order_id"] == buy["order_id"]
         assert "account_id" not in trade
         assert {o["account_id"] for o in messages[2]["payload"]} == {"alice"}
@@ -173,13 +174,23 @@ def test_oversized_incoming_message(api):
 
 def test_slow_subscriber_closes_without_undoing_trade(api, monkeypatch):
     original = Exchange.subscribe
+    original_send = WebSocket.send_text
+    stuck = '{"type":"stuck"}'
 
     async def bounded(self, **kwargs):
         sub = await original(self, **kwargs)
-        sub.max_messages = 0
+        # A send that never completes leaves a real backlog behind it.
+        sub.offer((stuck, stuck))
+        sub.max_messages = 1
         return sub
 
+    async def send_text(self, data):
+        if data == stuck:
+            await asyncio.Event().wait()
+        await original_send(self, data)
+
     monkeypatch.setattr(Exchange, "subscribe", bounded)
+    monkeypatch.setattr(WebSocket, "send_text", send_text)
     with api.websocket_connect("/ws") as socket:
         subscribe(socket, ["book"])
         assert post(api).status_code == 201
@@ -236,6 +247,7 @@ async def test_private_isolation_prevention_and_healthy_consumer(exchange):
         channels=frozenset({"orders", "fills"}), identity=identity("bob")
     )
     slow = await exchange.subscribe(channels=frozenset({"book"}))
+    slow.offer(("backlog",))
     slow.max_bytes = 0
     await exchange.submit_order(
         identity=identity(), order=LimitOrder("ABC-USD", OrderSide.SELL, D(100), D(3))
@@ -361,7 +373,6 @@ async def test_restart_invalidates_cursors_and_stream_baselines(exchange):
 
 
 def test_send_timeout_and_disconnect_cleanup(api, exchange, monkeypatch):
-    from starlette.websockets import WebSocket
 
     original = WebSocket.send_text
 
@@ -432,3 +443,41 @@ async def test_read_started_during_reservation_sees_only_final_state(
         "ABC": (D(5), D(0)),
     }
     assert snapshot.orders[0].status == "filled"
+
+
+@pytest.mark.anyio
+async def test_caught_up_subscriber_accepts_oversized_bundle_backlog_does_not():
+    payload = [{"price": str(i), "quantity": "1"} for i in range(1000)]
+    messages = observations.frames(
+        process_id="process",
+        channel="book",
+        sequence=1,
+        commit_id=1,
+        kind="update",
+        payload=payload,
+        max_bytes=1024,
+    )
+    caught_up = observations.Subscription(frozenset({"book"}), None, ())
+    caught_up.max_bytes = caught_up.max_messages = 1
+    caught_up.offer(messages)
+    assert not caught_up.failed.is_set()
+    received = [await caught_up.receive() for _ in messages]
+    assert received == list(messages) and caught_up.pending_bytes == 0
+    caught_up.offer(messages[:1])
+    caught_up.offer(messages[:1])
+    assert caught_up.failed.is_set()
+
+
+@pytest.mark.anyio
+async def test_heartbeat_is_queued_behind_earlier_updates(exchange):
+    subscription = await exchange.subscribe(
+        channels=frozenset({"orders"}), identity=identity()
+    )
+    await exchange.submit_order(
+        identity=identity(), order=LimitOrder("ABC-USD", OrderSide.BUY, D(100), D(2))
+    )
+    await exchange.heartbeat(subscription)
+    update = json.loads(await subscription.receive())
+    heartbeat = json.loads(await subscription.receive())
+    assert (update["type"], heartbeat["type"]) == ("update", "heartbeat")
+    assert heartbeat["payload"]["channels"]["orders"] == update["sequence"]
