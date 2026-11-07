@@ -13,6 +13,13 @@ class OrderSide(StrEnum):
     SELL = "sell"
 
 
+class Liquidity(StrEnum):
+    """Say whether an owned order provided resting liquidity or took it."""
+
+    MAKER = "maker"
+    TAKER = "taker"
+
+
 class OrderStatus(StrEnum):
     """Describe the current lifecycle state of an accepted order."""
 
@@ -44,7 +51,7 @@ class Balance:
 
 @dataclass(frozen=True, slots=True)
 class OrderSnapshot:
-    """Capture an accepted order's identity, quantities, price, and state."""
+    """Capture original quantity, distinct executed/open/removed quantities, and state."""
 
     order_id: str
     account_id: str
@@ -55,6 +62,11 @@ class OrderSnapshot:
     limit_price: Decimal | None
     status: OrderStatus
     accepted_at: datetime
+    remaining_quantity: Decimal
+    client_order_id: str | None = None
+    cancelled_quantity: Decimal = Decimal(0)
+    prevented_quantity: Decimal = Decimal(0)
+    commit_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +81,8 @@ class Fill:
     price: Decimal
     quantity: Decimal
     executed_at: datetime
+    liquidity: Liquidity
+    commit_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)

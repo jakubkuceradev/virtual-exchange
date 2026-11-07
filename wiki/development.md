@@ -5,9 +5,10 @@ title: Development and Project Layout
 
 # Development and project layout
 
-The exchange and website backend each have a runnable health-only API,
-independent dependencies, tests, and an image. Trading and competition behavior
-are not implemented; the frontend remains a placeholder.
+The exchange has health and authenticated identity endpoints; the website
+backend has a health-only API. Each owns its dependencies, tests, and image.
+Funded REST and WebSocket trading are implemented; competition is deferred and
+the frontend remains a placeholder.
 
 ## Local setup
 
@@ -26,7 +27,8 @@ curl http://127.0.0.1:8000/health
 ```
 
 Expect HTTP 200 and `{"status":"ok"}`. Health reports API liveness only.
-Unknown routes, including orders and generated API docs, return 404. Ctrl+C
+Unknown routes and generated API docs return 404. Trading/private routes require
+configured allocations and credentials; see [funded trading](/trading-slice.md). Ctrl+C
 stops the server. No credentials, database, or private bot repository are needed.
 Dependency installation needs network access; normal runtime does not.
 
@@ -37,8 +39,9 @@ uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --fac
 ```
 
 Keep loopback binding for local development. Uvicorn reports invalid arguments
-and bind failures with nonzero exit status. No separate application configuration
-or environment-file loader exists yet.
+and bind failures with nonzero exit status. The exchange reads private
+authentication configuration selected by EXCHANGE_AUTH_CONFIG; see [authentication](/authentication.md). No environment-file
+loader is provided.
 
 ## Website backend
 
@@ -113,7 +116,8 @@ PORT=18000 WEBSITE_BACKEND_PORT=18001 docker compose up --build --wait
 Compose builds exchange/ and website/backend/, publishing both to host loopback
 on ports 8000 and 8001 by default. Each API listens on all interfaces inside
 its container, runs as an unprivileged user, installs locked runtime dependencies,
-and has an HTTP healthcheck. There are no volumes, credentials, or databases.
+and has an HTTP healthcheck. The default stack has no volumes, credentials, or
+databases. Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
 Neither health endpoint depends on the other service. Build needs
 network access to registries and package sources; runtime needs no external
 service. This is local scaffolding, not production deployment configuration.
@@ -131,10 +135,10 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 
 | Location | Responsibility and status |
 | --- | --- |
-| exchange/src/virtual_exchange/api.py | FastAPI factory and health route |
+| exchange/src/virtual_exchange/api.py | FastAPI factory, health, and authenticated identity routes |
 | exchange/src/virtual_exchange/types/ | Public dataclasses/enums; no imports from callable interfaces |
-| exchange/src/virtual_exchange/auth.py | Callable authentication interface stubs |
-| exchange/src/virtual_exchange/exchange/interface.py | Callable trading interface stubs; __init__.py only re-exports them |
+| exchange/src/virtual_exchange/auth.py | Configured token authentication and permission checks |
+| exchange/src/virtual_exchange/exchange/service.py | Coordinated funded operations and consistent observations |
 | exchange/src/virtual_exchange/market_data.py | Callable market-data interface stubs |
 | exchange/tests/ | HTTP checks against the actual application |
 | exchange/pyproject.toml, exchange/uv.lock | Independent Python packaging, dependencies, and tool configuration |
@@ -148,4 +152,5 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 The exchange and website backend run independently. The frontend will receive
 its own dependencies, tests, and build configuration when its stack is chosen.
 See [public interfaces](/public-interfaces.md) for operations and dependency
-boundaries. Internal exchange modules remain unspecified.
+boundaries. Funded operations and live delivery share one configured exchange
+instance; run one Uvicorn worker because all state is in-memory.

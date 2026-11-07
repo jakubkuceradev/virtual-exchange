@@ -6,21 +6,32 @@ title: Public Module Boundaries
 # Public module boundaries
 
 The agreed scaffold separates exchange/ from website/backend/ and
-website/frontend/. It outlines public interfaces and leaves implementation
-modules undefined. See [public interfaces](/public-interfaces.md) for contracts
-and [development setup](/development.md) for source locations.
+website/frontend/. It outlines public interfaces; the internal matching
+implementation is described in [matching core](/matching-core.md). See
+[public interfaces](/public-interfaces.md) for contracts and
+[development setup](/development.md) for source locations.
 
 ## Deep exchange boundary
 
 Callers request complete order operations. The exchange will own validation,
 command ordering, matching, reservations, settlement, durable acceptance, and
 retry behavior behind that boundary. HTTP handlers must not coordinate private
-reserve/match/settle/save steps. Public placeholders describe these expectations;
-they implement none of this trading behavior yet.
+reserve/match/settle/save steps. The app-owned Exchange implements funded in-process operations through a private
+candidate commit boundary; persistence and crash durability remain deferred.
 
 Order state, balances, and executions must eventually be committed consistently
 before success. Merely sharing a process does not establish atomicity. Storage,
 recovery, and event delivery require a later behavioral design.
+
+## Matching and account integration
+
+The matching core owns book validation, matching, and cancellation independently
+of balances. Future complete trading operations must validate and reserve funds
+before matching, then consistently settle executions and release reservations.
+HTTP handlers must not coordinate these private steps. The first milestone is
+in-memory, resets on restart, and tests supplied eligible orders directly;
+the funded integration now coordinates candidate account/matching state before
+publishing it. This establishes in-process isolation, not crash durability.
 
 ## Independent changes
 

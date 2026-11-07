@@ -2,6 +2,7 @@
 
 from virtual_exchange.types.auth import (
     AuthenticatedIdentity,
+    Permission,
 )
 from virtual_exchange.types.market_data import (
     BookLevel,
@@ -9,10 +10,21 @@ from virtual_exchange.types.market_data import (
     Ticker,
     Trade,
 )
+from virtual_exchange.types.matching import (
+    Execution,
+    MatchingResult,
+)
+from virtual_exchange.types.operations import (
+    Acceptance,
+    AccountSnapshot,
+    Cancellation,
+    LimitOrder,
+)
 from virtual_exchange.types.trading import (
     Balance,
     Fill,
     Instrument,
+    Liquidity,
     OrderSide,
     OrderSnapshot,
     OrderStatus,
@@ -20,15 +32,23 @@ from virtual_exchange.types.trading import (
 )
 
 __all__ = [
+    "Acceptance",
+    "AccountSnapshot",
+    "Cancellation",
+    "LimitOrder",
     "AuthenticatedIdentity",
     "Balance",
     "BookLevel",
+    "Execution",
     "Fill",
     "Instrument",
+    "Liquidity",
+    "MatchingResult",
     "OrderBookSnapshot",
     "OrderSide",
     "OrderSnapshot",
     "OrderStatus",
+    "Permission",
     "SubmitOrderResult",
     "Ticker",
     "Trade",
