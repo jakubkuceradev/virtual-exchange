@@ -7,7 +7,8 @@ title: Development and Project Layout
 
 The exchange and website backend each have a runnable health-only API,
 independent dependencies, tests, and an image. Trading and competition behavior
-are not implemented; the frontend remains a placeholder.
+are not implemented. The frontend has an interactive HTML design preview; its
+React + TypeScript + Vite / unstyled Mantine conversion awaits visual feedback.
 
 ## Local setup
 
@@ -39,6 +40,25 @@ uv run --project exchange --locked uvicorn virtual_exchange.api:create_app --fac
 Keep loopback binding for local development. Uvicorn reports invalid arguments
 and bind failures with nonzero exit status. No separate application configuration
 or environment-file loader exists yet.
+
+## Website design preview
+
+From the repository root, use Python's static server:
+
+```sh
+python3 -m http.server 4173 --bind 127.0.0.1 --directory website/frontend/design
+```
+
+Open http://127.0.0.1:4173/. Overview, Trade, Leaderboard, and API / Account
+use fictional sample data and disposable local interactions; no backend is
+needed. Reload resets the demo. Add `?scenario=no-trades#trade` to review empty
+market/account observation states. Ctrl+C stops the server.
+
+The [frontend README](../website/frontend/README.md) links desktop/mobile
+screenshots and describes sample interactions and unresolved production policies.
+With Node.js 24+, run `node --test website/frontend/tests/demo.test.mjs` for the
+focused demo-state tests. These do not establish real exchange integration.
+Existing CI covers Python/container behavior, not the frontend or visual review.
 
 ## Website backend
 
@@ -141,11 +161,12 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | exchange/Dockerfile, exchange/.dockerignore | Exchange image and build context |
 | website/backend/src/pqc_website/api.py | Independent website API factory and health example |
 | website/backend/tests/, pyproject.toml, uv.lock, Dockerfile | Backend-owned checks, dependencies, and image |
-| website/frontend/ | Public responsibility outline; no framework/runtime yet |
+| website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
 | compose.yaml, .github/workflows/ | Shared local startup and CI |
 | wiki/ | Project knowledge and offline visual overview |
 
-The exchange and website backend run independently. The frontend will receive
-its own dependencies, tests, and build configuration when its stack is chosen.
+The exchange and website backend run independently. The frontend preview has
+dependency-free Node state tests. The next round uses React, TypeScript, Vite,
+and unstyled Mantine; its package/build configuration will follow visual review.
 See [public interfaces](/public-interfaces.md) for operations and dependency
 boundaries. Internal exchange modules remain unspecified.

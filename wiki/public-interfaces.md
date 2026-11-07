@@ -17,14 +17,17 @@ open. Both the exchange and website backend factories and health routes work.
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
 website/backend/      Independent health-only API; competition still planned
-website/frontend/     Browser experience; placeholder
+website/frontend/     Interactive HTML design preview; React conversion planned
 ```
 
 The website backend consumes published exchange APIs/data. It imports no exchange
 implementation and reads no exchange database. The exchange has no dependency on
 competition or website code. Bots are external exchange API clients.
 The backend uses an independent FastAPI/Uvicorn package, tests, lockfile, and
-image. The frontend stack remains deferred.
+image. The selected frontend stack is React + TypeScript + Vite with unstyled
+Mantine for the next round. The first HTML design preview is implemented; its
+visual review precedes the component-based round. Use Mantine headless components
+with custom styling when converting the reviewed design.
 
 ## Exchange interfaces
 
@@ -86,7 +89,7 @@ trades do not contain private account/order identifiers.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
-| Frontend | Browser interactions and website-backend responses | Participant views and competition presentation. Browser trading/data routing and framework remain undecided. |
+| Frontend | Browser interactions and website-backend responses | Four interactive HTML design views with sample data. React + TypeScript + Vite with unstyled Mantine is selected for the next round; production browser trading/data routing remains undecided. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Ranking calculations may need historical account
@@ -104,6 +107,19 @@ Exchange published market/account data -> website backend -> website frontend
 Account IDs must eventually come from trusted authentication; passing a string
 today grants no access because every stub fails. Authorization remains the
 exchange interface's responsibility, not a claim established by type annotations.
+
+The HTML preview in website/frontend/design runs independently with fixed fixtures
+and disposable local order/credential interactions. It makes no service requests,
+implements no production policies, and exposes no competitor holdings or individual
+histories. The approved mock uses square-cornered boxes and
+controls, subtle surface contrast, and shared borders between related panels.
+Introductory headings are omitted, with original panel padding retained. Locally
+bundled Space Grotesk, Inter, and JetBrains Mono align typography with the club
+website. The monospace header/buttons and thin Prague Quant Club footer include
+Instagram and LinkedIn links. The fictional asset is Quant Coin (QC), quoted in
+EUR. Only the final mock design is included.
+See [frontend review instructions](../website/frontend/README.md) for
+startup, desktop/mobile screenshots, sample scenarios, and verification limits.
 
 The integration flow is planned. Placeholders do not authenticate, match, settle,
 publish, or score. The backend health example runs without exchange imports,
