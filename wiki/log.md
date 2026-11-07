@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Trading REST**: Connected configured funded exchange instances to submit/cancel, private account/recovery queries, and public book/trade observations. Added acceptance receipts, sanitized errors, and cursor/client-ID reconciliation.
+
 * **Funded exchange operations**: Added app-owned coordinated funding, exact settlement, candidate commit isolation, private queries, operator allocations, and account-scoped client-ID reconciliation. Network adapters follow in stacked changes.
 
 * **Matching alignment**: Adopted decrement-and-cancel with explicit prevented/remaining/cancelled quantities, terminal-cancellation errors, and generated exchange IDs separate from optional client metadata. Updated acceptance examples and retained earlier executions and maker priority.
