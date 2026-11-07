@@ -45,9 +45,13 @@ records stay independent of the web framework.
 | virtual_exchange.exchange | submit_order(account_id, request_id, order), cancel_order(account_id, request_id, order_id), get_order, list_orders, list_fills, get_balances, list_instruments | Complete operation results or meaningful rejection/not-found/access failures. Never expose private reservation/matching/settlement steps to callers. |
 | virtual_exchange.market_data | get_order_book(instrument_id), list_trades(instrument_id), get_ticker(instrument_id) | Public book/trade observations; explicit absence of a last price before trading. Freshness, sequence and recovery contracts remain to be defined. |
 
+The internal [matching core](/matching-core.md) is implemented separately from
+these participant-facing stubs. It accepts eligible orders without account or
+HTTP dependencies and returns matching outcomes for later settlement.
+
 Trading ownership and consistent state changes belong behind the exchange
-interface. Internal files, matching rules, funding mechanisms, and storage choices
-are deliberately not scaffolded. Unlimited bot money is a future funding policy;
+interface. Funding mechanisms and persistent storage remain undefined; matching
+now has its own internal implementation. Unlimited bot money is a future funding policy;
 it gives no extra matching priority.
 
 Trading callable definitions live in virtual_exchange.exchange.interface;
@@ -105,7 +109,7 @@ Account IDs must eventually come from trusted authentication; passing a string
 today grants no access because every stub fails. Authorization remains the
 exchange interface's responsibility, not a claim established by type annotations.
 
-The integration flow is planned. Placeholders do not authenticate, match, settle,
+The integration flow is planned. Public placeholders do not authenticate, match, settle,
 publish, or score. The backend health example runs without exchange imports,
 network calls, or an event bus. Root Compose starts both independent APIs.
 

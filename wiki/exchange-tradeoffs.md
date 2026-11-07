@@ -5,7 +5,9 @@ title: First Slice Realism and Complexity
 
 # First-slice realism and complexity
 
-Status: recommendations for discussion, not agreed implementation requirements.
+Status: recommendations for discussion. The agreed and implemented matching
+subset is recorded in [matching core](/matching-core.md); recommendations beyond
+that subset remain open.
 The user asked to weigh realism against introduced complexity, prioritizing
 realism. A continuous, fully funded spot order book is a suggested reference
 model; real exchanges differ by venue and instrument.
