@@ -2,6 +2,8 @@
 
 ## 2026-11-07
 
+* **Approved website mock**: Added the final responsive Overview, Trade, Leaderboard, and API / Account HTML design with QC/EUR fixtures, local trading/credential interactions, state tests, and desktop/mobile screenshots. Uses square corners, subtle shared panels, locally licensed club fonts, and club/social footer links. Only the final mock is included; React/TypeScript/Vite with headless Mantine is the agreed next implementation stack. Production services remain health-only.
+
 * **Absolute imports**: Converted package imports to absolute paths and configured Ruff TID252 to reject all relative imports in both Python projects. Recorded the convention in AGENTS.md and the interface/development guides.
 
 ## 2026-11-06
