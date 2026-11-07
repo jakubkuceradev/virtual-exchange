@@ -2,6 +2,7 @@
 
 from virtual_exchange.types.auth import (
     AuthenticatedIdentity,
+    Permission,
 )
 from virtual_exchange.types.market_data import (
     BookLevel,
@@ -35,6 +36,7 @@ __all__ = [
     "OrderSide",
     "OrderSnapshot",
     "OrderStatus",
+    "Permission",
     "SubmitOrderResult",
     "Ticker",
     "Trade",
