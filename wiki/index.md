@@ -8,6 +8,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 
 ## Project knowledge
 
+- [Authentication](/authentication.md) — Configured bearer tokens, identity endpoint, grants, and restart lifecycle.
 - [Public interfaces](public-interfaces.md) — Experimental exchange/website contracts, public types, and current status.
 - [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
 - [Visual overview](overview.html) — Dark visual document with module interactions and the first vertical slice.
