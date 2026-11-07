@@ -1,9 +1,7 @@
 # Frontend integration status
 
-The reviewed presentation is implemented. **No participant-facing feature is
-connected to a real API yet.** The browser never submits orders, retrieves market
-or competition data, authenticates a participant, or manages real credentials.
-The running interactions use disposable in-memory state and reset on reload.
+The reviewed presentation is implemented over a single data-source contract.
+The mock source keeps the original disposable in-memory demo; it resets on reload.
 
 Status annotations live next to every component and at the top of each source
 module. They describe individual responsibilities; an implemented renderer does
@@ -18,36 +16,39 @@ not make its mocked data source complete.
 Find all marked boundaries with `rg -n '@mock-backend|@mock-frontend|@implemented-ui' src`.
 These are developer-facing annotations, so the reviewed interface stays uncluttered.
 
+## Data-source boundary
+
+Every view reads one `TradingSource` through `useTrading()`
+([src/trading/types.ts](src/trading/types.ts)). It carries identity, market
+(instrument, book, last price, candles, statistics), account (cash/asset
+available and reserved, own orders and fills, or an explicit unavailable
+state), asynchronous order commands, and `samples` — fixture data for features
+the exchange does not provide. Amounts are decimal strings handled by
+[src/trading/decimal.ts](src/trading/decimal.ts); floating point is used only
+for chart geometry and percentages.
+
+| Module | Status |
+| --- | --- |
+| [trading/mock.ts](src/trading/mock.ts) / `useMockSource` | Mock source: adapts the [demo.ts](src/demo.ts) simulation and fixtures, converting cents/whole units to decimal strings at the boundary. Selects the `no-trades` scenario. |
+| [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation (matching, self-trade prevention, reservations, settlement, cancellation, validation, dummy keys). Never production exchange logic. |
+| [fixtures.ts](src/fixtures.ts) | Fabricated observations: identity, balances, book, candles, performance, rankings. |
+| [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root; it never switches at runtime. |
+
 ## Views and components
 
-| Component | Mocked now / integration still required | Implemented UI to retain |
+| Component | Source-backed | Sample-only (`samples`) |
 | --- | --- | --- |
-| `App` / `Dashboard` ([App.tsx](src/App.tsx)) | Always installs `DemoProvider`; header identity and signed-in state are fixtures. No login, session validation, or authorization. | Hash routing, direct links, history, focus/skip link, header, club/social footer. |
-| `Overview` ([Overview.tsx](src/Overview.tsx)) | All account/market/competition observations. Fixed valuation, baseline, profit calculations, rank and participant count. | Metric/panel layout, responsive grouping, view links. |
-| `Trade` ([Trade.tsx](src/Trade.tsx)) | Market/account session; fixed change/high/low/volume, instrument metadata, interval/date. | Complete chart/book/ticket/orders/fills composition and mobile stacking. |
-| `Leaderboard` ([Leaderboard.tsx](src/Leaderboard.tsx)) | Periods select local ranking fixtures; count, ranks and returns are sample observations. | Selected-period state, persistence across navigation, layout and status announcement. |
-| `Account` ([Account.tsx](src/Account.tsx)) | Profile and signed-in status; provisional request URL, auth scheme, payload and documentation. | Profile layout and working documentation anchor. |
-| `PerformanceChart` / `CandleChart` ([Charts.tsx](src/Charts.tsx)) | Fixed series and demo availability; hard-coded axes, dates/times, current-price marker and descriptions. | Accessible SVG rendering. Update metadata/scales/descriptions together with real series. |
-| `EmptyChart` ([Charts.tsx](src/Charts.tsx)) | No behavior is simulated here; callers currently choose availability from the demo scenario. | Empty-state rendering from supplied text. |
-| `Nearby` / `RankingRows` ([Standings.tsx](src/Standings.tsx)) | Fixture availability/identity and sample rows supplied by the parent. | Summary-only row rendering and current-participant highlight. |
-| `PeriodControls` ([Standings.tsx](src/Standings.tsx)) | No behavior is simulated here; the parent currently resolves selection to fixtures. | Controlled buttons and keyboard behavior. |
-| `OrderTicket` ([Trading.tsx](src/Trading.tsx)) | Submission, resources and results; whole-unit/two-decimal precision, limits and validation assume demo rules. No real request, pending state or server errors. | Controlled inputs, Buy/Sell selection, labels, field feedback/focus, estimate display. Bind precision/validation to actual instrument and server contracts. |
-| `BookRows` ([Trading.tsx](src/Trading.tsx)) | Local bid/ask levels merged with own open remainders by `book()`; no snapshot/stream, freshness, sequence or reconnect handling. | Public depth-row rendering. |
-| `OrderRows` ([Trading.tsx](src/Trading.tsx)) | Own order history and cancellation result; no order API or concurrency handling. | Table rendering, cancel affordance, focus after cancellation. |
-| `FillRows` ([Trading.tsx](src/Trading.tsx)) | Own execution records; no fills API or live updates. | Table rendering. |
-| `Credentials` ([Credentials.tsx](src/Credentials.tsx)) | Dummy key state and create/revoke commands/feedback. No real credential storage or authentication scheme. | Actual browser clipboard, selectable manual-copy fallback, disabled states, focus recovery. |
+| `App` / `Dashboard` | Header identity, navigation, focus | — |
+| `Overview` | Available/reserved cash, holdings, market card | Valuation, profit, performance chart, rank and nearby standings |
+| `Trade`, `OrderTicket`, `BookRows`, `OrderRows`, `FillRows` | Everything: instrument units, statistics, candles, book, balances, orders, fills, commands, disabled states | — |
+| `CandleChart` | Candles with computed scales and labels | — |
+| `PerformanceChart` | — | Fixed sample series and labels |
+| `Leaderboard`, `Nearby`, `RankingRows` | Unavailable state when `samples` is null | All rankings |
+| `Credentials` | Unavailable state when `samples` is null | Dummy key create/revoke |
+| `Account` | Identity, account ID, market, connection status | Example request and API notes are provisional |
 
-## Modules and service boundary
-
-| Module | Status / replacement boundary |
-| --- | --- |
-| [fixtures.ts](src/fixtures.ts) | Entirely mocked observations/identity and visual assumptions. Its local records are not backend transport contracts. |
-| [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation: matching, self-trade prevention (both crossing own quantities removed without a fill, as in the exchange), last execution price, reservations, settlement, cancellation, funding, validation, fixed session clock and dummy credential lifecycle. Sample liquidity keeps priority over own orders at a price level. Replace with API commands/results; do not reuse it as production exchange logic. |
-| [DemoContext.tsx](src/DemoContext.tsx) / `useSession`, `DemoProvider`, `useDemo` | Mock session adapter: publishes React snapshots from the simulation and selects the `no-trades` scenario. Replace with ownership of authenticated account, market, competition and credential requests/state. |
-| [main.tsx](src/main.tsx) | Implemented entry point, headless Mantine provider and local fonts/styles. Its child `App` still composes the mock provider. |
-| [styles.ts](src/styles.ts) | Implemented class composition and display formatting; no simulated data or commands. |
-| [global.css](src/global.css), [App.module.css](src/App.module.css) | Implemented reviewed presentation, responsive styles and header blur. No service behavior. |
-| [website backend API](../backend/src/pqc_website/api.py) | Real `/health` route in this branch, not a mock participant API. Account/market/competition/credential routes are absent. The frontend does not call it. |
+When `samples` is null (the live source), sample-only features render explicit
+unavailable states; they never fall back to fixtures.
 
 ## Replacing a mock
 

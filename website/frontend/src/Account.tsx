@@ -1,16 +1,19 @@
 /**
- * Account view: presentation implemented, identity/access documentation mocked.
- * @mock-backend Profile identity and signed-in status are fixtures; there is no authenticated session.
+ * Account view: identity from the active source; access documentation mocked.
+ * @implemented-ui Profile layout, identity/market from the source, documentation anchor.
  * @mock-frontend Request URL, authorization scheme, payload, and API notes are provisional examples.
  * @implemented-ui Profile layout and navigable documentation anchor.
  * Replace profile/session data and example/documentation with published API contracts.
  */
 import { Credentials } from './Credentials';
-import { participant } from './fixtures.ts';
 import { cx } from './styles';
+import { useTrading } from './trading/context.tsx';
 
-/** @mock-backend Profile/session. @mock-frontend API example and documentation placeholders. */
+/** @implemented-ui Profile from the source. @mock-frontend API example and documentation placeholders. */
 export function Account({ active }: { active: boolean }) {
+  const { identity, market, kind } = useTrading();
+  const name = identity?.name ?? 'Not connected';
+  const instrument = market.instrument;
   return (
     <section
       data-view="account"
@@ -29,33 +32,43 @@ export function Account({ active }: { active: boolean }) {
             </div>
             <div className={cx('profile-identity')}>
               <span className={cx('avatar large-avatar')}>
-                {participant.initials}
+                {identity?.initials ?? '—'}
               </span>
               <div>
-                <h3>{participant.name}</h3>
+                <h3>{name}</h3>
                 <p className={cx('small muted')}>{'Participant'}</p>
               </div>
             </div>
             <dl className={cx('account-details')}>
               <div>
                 <dt>{'Display name'}</dt>
-                <dd>{participant.name}</dd>
+                <dd>{name}</dd>
               </div>
               <div>
                 <dt>{'Account ID'}</dt>
                 <dd>
-                  <code>{participant.id}</code>
+                  <code>{identity?.accountId ?? '—'}</code>
                 </dd>
               </div>
               <div>
                 <dt>{'Market'}</dt>
-                <dd>{'QC / EUR'}</dd>
+                <dd>
+                  {instrument
+                    ? `${instrument.baseAsset} / ${instrument.quoteAsset}`
+                    : '—'}
+                </dd>
               </div>
               <div>
                 <dt>{'Account status'}</dt>
                 <dd>
-                  <span className={cx('positive')}>{'●'}</span>
-                  {' Sample signed-in account'}
+                  <span className={cx(identity ? 'positive' : 'muted')}>
+                    {'●'}
+                  </span>
+                  {kind === 'mock'
+                    ? ' Sample signed-in account'
+                    : identity
+                      ? ' Connected'
+                      : ' Not connected'}
                 </dd>
               </div>
             </dl>

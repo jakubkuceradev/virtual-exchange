@@ -1,22 +1,25 @@
 /**
- * Leaderboard: real selection UI over mocked observations.
- * @mock-backend All periods select fixed ranks/returns/participants; there is no ranking API request.
+ * Leaderboard: real selection UI over sample observations.
+ * @mock-backend All periods select fixed ranks/returns/participants; live mode has no rankings
+ *   and shows an unavailable state.
  * @mock-frontend Participant count and summary standings are fixed visual placeholders.
  * @implemented-ui Period selection, selection persistence, summary/table/nearby layout.
  * Replace period datasets with website-backend results; retain selection/rendering.
  */
 import { useState } from 'react';
-import { useDemo } from './DemoContext';
 import type { Period } from './fixtures.ts';
-import { participantCount, periods } from './fixtures.ts';
 import { Nearby, PeriodControls, RankingRows } from './Standings';
 import { cx, signed } from './styles';
+import { useTrading } from './trading/context.tsx';
 
 /** @mock-backend Selected period reads fixtures, not a service. @implemented-ui Period selection is functional. */
 export function Leaderboard({ active }: { active: boolean }) {
-  const { empty } = useDemo();
+  const { samples, identity } = useTrading();
   const [selected, setSelected] = useState<Period>('continuous');
-  const period = periods[selected];
+  const period = samples?.periods[selected] ?? null;
+  const empty = !!samples?.empty;
+  const participantCount = samples?.participantCount;
+  const rankings = { period, empty, you: identity?.name ?? '' };
   return (
     <section
       data-view="leaderboard"
@@ -27,13 +30,17 @@ export function Leaderboard({ active }: { active: boolean }) {
         {'Leaderboard'}
       </h1>
       <div className={cx('leader-toolbar')}>
-        <PeriodControls value={selected} onChange={setSelected} />
+        <PeriodControls
+          value={selected}
+          onChange={setSelected}
+          disabled={!samples}
+        />
       </div>
       <div className={cx('leader-summary')}>
         <div>
           <span className={cx('label')}>{'YOUR RANK'}</span>
           <strong id="leader-rank">
-            {empty ? (
+            {!period || empty ? (
               '—'
             ) : (
               <>
@@ -45,7 +52,7 @@ export function Leaderboard({ active }: { active: boolean }) {
         <div>
           <span className={cx('label')}>{'YOUR RETURN'}</span>
           <strong id="leader-return" className={cx('positive')}>
-            {empty ? '—' : signed(period.profit)}
+            {!period || empty ? '—' : signed(period.profit)}
           </strong>
         </div>
       </div>
@@ -70,13 +77,17 @@ export function Leaderboard({ active }: { active: boolean }) {
                 </tr>
               </thead>
               <tbody>
-                <RankingRows period={period} />
+                <RankingRows {...rankings} />
               </tbody>
             </table>
           </div>
           <div className={cx('panel-foot')}>
             <span>{'Leaders + your neighborhood'}</span>
-            <span>{`${participantCount} participants`}</span>
+            <span>
+              {participantCount == null
+                ? 'Rankings unavailable'
+                : `${participantCount} participants`}
+            </span>
           </div>
         </article>
         <aside>
@@ -88,15 +99,17 @@ export function Leaderboard({ active }: { active: boolean }) {
               </div>
             </div>
             <div className={cx('nearby-list')}>
-              <Nearby period={period} />
+              <Nearby {...rankings} />
             </div>
           </article>
         </aside>
       </div>
       <p id="period-feedback" className={cx('sr-only')} role="status">
-        {empty
-          ? 'Awaiting the first ranking snapshot.'
-          : `${period.label} standings shown. Your sample rank is ${period.rank}.`}
+        {!samples
+          ? 'Rankings are not calculated yet.'
+          : !period || empty
+            ? 'Awaiting the first ranking snapshot.'
+            : `${period.label} standings shown. Your sample rank is ${period.rank}.`}
       </p>
     </section>
   );
