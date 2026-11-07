@@ -116,10 +116,12 @@ export async function connect(page: Page, token: string) {
 }
 
 export const test = base.extend<{ exchange: Exchange }>({
-  exchange: async ({}, use) => {
+  exchange: async ({ browser }, use) => {
     const exchange = new Exchange();
     await exchange.start();
     await use(exchange);
+    // Close participants first so they do not reconnect to a stopped exchange.
+    for (const context of browser.contexts()) await context.close();
     await exchange.stop();
   },
 });

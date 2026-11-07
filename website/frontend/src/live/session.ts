@@ -11,10 +11,12 @@
  *   with bounded backoff. A new process identity clears everything.
  * - The token lives only in this object's memory.
  */
+import { isMultiple, isZero, normalizeInput } from '../trading/decimal.ts';
 import type {
   AccountView,
   Identity,
   MarketView,
+  OrderInput,
   Outcome,
 } from '../trading/types.ts';
 import type { AccountSnapshot, AccountState } from './account.ts';
@@ -43,8 +45,14 @@ import type { StreamEvent } from './protocol.ts';
 import { Assembler, ProcessChanged } from './protocol.ts';
 import type { Rest } from './rest.ts';
 import { RestFailure } from './rest.ts';
-import type { WireInstrument } from './wire.ts';
-import { instrument as decodeInstrument, list, object, text } from './wire.ts';
+import type { WireInstrument, WireOrder } from './wire.ts';
+import {
+  instrument as decodeInstrument,
+  order as decodeOrder,
+  list,
+  object,
+  text,
+} from './wire.ts';
 
 export type SocketLike = {
   onopen: (() => void) | null;
@@ -61,6 +69,7 @@ export type Environment = {
   setTimeout: (callback: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
   random: () => number;
+  randomBytes: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer>;
 };
 
 /** Heartbeats arrive every 10 s; allow 2.5 intervals before resynchronizing. */
@@ -70,8 +79,38 @@ const BACKOFF_CAP_MS = 15_000;
 
 export type CommandState = {
   busy: boolean;
+  /** Message for a submission whose outcome is unknown; blocks new submissions. */
   unresolved: string | null;
+  /** True once a resync and lookup have both failed to find the unresolved order. */
+  canDismiss: boolean;
   feedback: Outcome | null;
+};
+
+const IDLE: CommandState = {
+  busy: false,
+  unresolved: null,
+  canDismiss: false,
+  feedback: null,
+};
+/** Lookups after an ambiguous submit: 1 s, 2 s, 4 s, 8 s, 16 s. */
+const LOOKUP_ATTEMPTS = 5;
+
+/** Canonical lowercase UUIDv4 from getRandomValues (works outside secure contexts). */
+export function uuidV4(
+  random: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer>,
+) {
+  const bytes = random(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
+const STATUS_TEXT: Record<WireOrder['status'], string> = {
+  open: 'is open',
+  partially_filled: 'is partly filled and still open',
+  filled: 'is filled',
+  cancelled: 'is cancelled',
 };
 
 export type LiveView = {
@@ -140,11 +179,16 @@ export class LiveSession {
   private balancesInFlight = false;
   private balancesQueued = false;
 
-  private commands: CommandState = {
-    busy: false,
-    unresolved: null,
-    feedback: null,
-  };
+  private commands: CommandState = IDLE;
+  /** Bumped whenever the account/process changes; stale command replies are dropped. */
+  private epoch = 0;
+  private pending: {
+    clientOrderId: string;
+    epoch: number;
+    attempts: number;
+    timer: unknown;
+    resyncedSince: boolean;
+  } | null = null;
 
   private readonly env: Environment;
 
@@ -188,6 +232,7 @@ export class LiveSession {
 
   async connect(token: string) {
     this.disconnect();
+    this.epoch++;
     this.token = token;
     this.accountPhase = 'connecting';
     this.emit();
@@ -203,7 +248,9 @@ export class LiveSession {
     this.account = null;
     this.accountPhase = 'signed-out';
     this.privateAttempt = 0;
-    this.commands = { busy: false, unresolved: null, feedback: null };
+    this.epoch++;
+    this.clearPending();
+    this.commands = IDLE;
     this.emit();
   }
 
@@ -289,9 +336,10 @@ export class LiveSession {
     this.tradesSynced = false;
     this.account = null;
     if (restarted) this.restartedAt = Date.now();
+    this.epoch++;
+    this.clearPending();
     this.commands = {
-      busy: false,
-      unresolved: null,
+      ...IDLE,
       feedback: this.commands.unresolved
         ? {
             kind: 'info',
@@ -505,6 +553,7 @@ export class LiveSession {
       return;
     }
     this.account = this.applyPrivate(this.account, event);
+    this.matchPending();
     this.emit();
     void this.refreshBalances(link, token);
   }
@@ -551,6 +600,8 @@ export class LiveSession {
     this.account = state;
     this.accountPhase = 'ready';
     this.privateAttempt = 0;
+    if (this.pending) this.pending.resyncedSince = true;
+    this.matchPending();
     this.emit();
     if (newer) void this.refreshBalances(link, token);
   }
@@ -579,6 +630,330 @@ export class LiveSession {
         void this.refreshBalances(link, token);
       }
     }
+  }
+
+  // ---- Commands ----
+
+  clearFeedback = () => {
+    if (!this.commands.feedback) return;
+    this.commands = { ...this.commands, feedback: null };
+    this.emit();
+  };
+
+  private setCommands(next: Partial<CommandState>) {
+    this.commands = { ...this.commands, ...next };
+    this.emit();
+  }
+
+  /** Why a command cannot be sent now, or null. */
+  private refusal(): string | null {
+    if (this.commands.busy) return 'Wait for the previous action to finish.';
+    if (this.accountPhase !== 'ready' || !this.account)
+      return 'Your account is not up to date yet.';
+    if (!this.permissions.includes('trade')) return 'This token is read-only.';
+    if (this.marketPhase !== 'ready')
+      return 'The market is not up to date yet.';
+    return null;
+  }
+
+  private validate(input: OrderInput): Outcome | null {
+    const instrument = this.instrument;
+    if (!instrument)
+      return { kind: 'rejected', message: 'The market is not loaded yet.' };
+    const price = normalizeInput(input.price);
+    if (
+      !price ||
+      isZero(price) ||
+      !isMultiple(price, instrument.priceIncrement)
+    )
+      return {
+        kind: 'rejected',
+        field: 'price',
+        message: `Enter a positive price in steps of ${instrument.priceIncrement} ${instrument.quoteAsset}.`,
+      };
+    const quantity = normalizeInput(input.quantity);
+    if (
+      !quantity ||
+      isZero(quantity) ||
+      !isMultiple(quantity, instrument.quantityIncrement)
+    )
+      return {
+        kind: 'rejected',
+        field: 'quantity',
+        message: `Enter a positive quantity in steps of ${instrument.quantityIncrement} ${instrument.baseAsset}.`,
+      };
+    return null;
+  }
+
+  submit = async (input: OrderInput): Promise<Outcome> => {
+    const refused = this.commands.unresolved ?? this.refusal();
+    if (refused) return { kind: 'rejected', message: refused };
+    const invalid = this.validate(input);
+    if (invalid) {
+      this.setCommands({ feedback: invalid });
+      return invalid;
+    }
+    const instrument = this.instrument as WireInstrument;
+    const token = this.token as string;
+    const epoch = this.epoch;
+    // One client ID per deliberate action, retained for reconciliation.
+    const clientOrderId = uuidV4(this.env.randomBytes);
+    const body = {
+      instrument_id: instrument.instrumentId,
+      side: input.side,
+      price: normalizeInput(input.price),
+      quantity: normalizeInput(input.quantity),
+      client_order_id: clientOrderId,
+      type: 'limit',
+    };
+    this.setCommands({ busy: true, feedback: null });
+    let outcome: Outcome;
+    try {
+      const receipt = object(await this.env.rest.post('/orders', body, token));
+      if (epoch !== this.epoch) return this.superseded();
+      outcome = {
+        kind: 'accepted',
+        message: `Order ${text(receipt.order_id).slice(0, 8)} accepted. Its status below updates as the exchange matches it.`,
+      };
+    } catch (error) {
+      if (epoch !== this.epoch) return this.superseded();
+      outcome = this.submitFailure(error, instrument, clientOrderId);
+    }
+    this.setCommands({ busy: false, feedback: outcome });
+    this.refreshAfterCommand();
+    return outcome;
+  };
+
+  private superseded(): Outcome {
+    return {
+      kind: 'info',
+      message: 'The connection changed before the exchange replied.',
+    };
+  }
+
+  private submitFailure(
+    error: unknown,
+    instrument: WireInstrument,
+    clientOrderId: string,
+  ): Outcome {
+    if (!(error instanceof RestFailure)) return this.unresolve(clientOrderId);
+    switch (error.kind) {
+      case 'conflict':
+        if (error.code === 'insufficient_funds')
+          return {
+            kind: 'rejected',
+            field: 'quantity',
+            message: `Not enough available funds: buys reserve price × quantity in ${instrument.quoteAsset}; sells reserve ${instrument.baseAsset}. Open orders keep their reservations.`,
+          };
+        // A duplicate of a fresh ID means an earlier attempt may have landed.
+        return this.unresolve(clientOrderId);
+      case 'invalid':
+        return {
+          kind: 'rejected',
+          message:
+            'The exchange rejected the order. Check that price and quantity match the market increments.',
+        };
+      case 'unauthenticated':
+        this.stopPrivate('rejected');
+        return {
+          kind: 'rejected',
+          message: 'Your token is no longer accepted.',
+        };
+      case 'forbidden':
+        return {
+          kind: 'rejected',
+          message:
+            error.code === 'account_not_provisioned'
+              ? 'This account has no trading allocation.'
+              : 'This token cannot place orders.',
+        };
+      case 'unavailable':
+        return {
+          kind: 'rejected',
+          message:
+            'The exchange is not accepting orders right now. Nothing was submitted.',
+        };
+      default:
+        return this.unresolve(clientOrderId);
+    }
+  }
+
+  /** The submit may or may not have committed: look it up, never resubmit. */
+  private unresolve(clientOrderId: string): Outcome {
+    this.clearPending();
+    this.pending = {
+      clientOrderId,
+      epoch: this.epoch,
+      attempts: 0,
+      timer: null,
+      resyncedSince: false,
+    };
+    const message =
+      'The exchange did not confirm your order. Checking whether it was received — it will not be sent again automatically.';
+    this.commands = {
+      ...this.commands,
+      unresolved: message,
+      canDismiss: false,
+    };
+    void this.lookup();
+    return { kind: 'unresolved', message };
+  }
+
+  private clearPending() {
+    if (this.pending) this.env.clearTimeout(this.pending.timer);
+    this.pending = null;
+  }
+
+  private resolvePending(order: WireOrder) {
+    this.clearPending();
+    this.setCommands({
+      unresolved: null,
+      canDismiss: false,
+      feedback: {
+        kind: 'accepted',
+        message: `The exchange received your order ${order.orderId.slice(0, 8)}; it ${STATUS_TEXT[order.status]}.`,
+      },
+    });
+  }
+
+  private matchPending() {
+    const pending = this.pending;
+    if (!pending || !this.account) return;
+    for (const order of this.account.orders.values())
+      if (order.clientOrderId === pending.clientOrderId) {
+        this.resolvePending(order);
+        return;
+      }
+  }
+
+  private async lookup() {
+    const pending = this.pending;
+    const token = this.token;
+    if (!pending || !token) return;
+    pending.attempts++;
+    try {
+      const raw = object(
+        await this.env.rest.get(
+          `/orders/client:${pending.clientOrderId}`,
+          token,
+        ),
+      );
+      if (this.pending !== pending || pending.epoch !== this.epoch) return;
+      if (!this.sameProcess(text(raw.process_id))) return;
+      this.resolvePending(decodeOrder(raw.data));
+      return;
+    } catch (error) {
+      if (this.pending !== pending) return;
+      const missing =
+        error instanceof RestFailure && error.kind === 'not_found';
+      // Not found proves nothing on its own; allow dismissal only after a full
+      // private resync completed since the ambiguous submit also missed it.
+      if (missing && pending.resyncedSince && !this.commands.canDismiss)
+        this.setCommands({
+          canDismiss: true,
+          unresolved:
+            'Your order was not found after refreshing your account. If it reaches the exchange later it will appear under Your orders. You can dismiss this to continue.',
+        });
+    }
+    if (pending.attempts < LOOKUP_ATTEMPTS)
+      pending.timer = this.env.setTimeout(
+        () => void this.lookup(),
+        1000 * 2 ** (pending.attempts - 1),
+      );
+  }
+
+  /** Re-check an unresolved order: full private resync, then a lookup. */
+  checkUnresolved = () => {
+    const pending = this.pending;
+    if (!pending) return;
+    pending.attempts = 0;
+    pending.resyncedSince = false;
+    this.env.clearTimeout(pending.timer);
+    void this.startPrivate();
+    pending.timer = this.env.setTimeout(() => void this.lookup(), 1000);
+  };
+
+  dismissUnresolved = () => {
+    if (!this.commands.canDismiss) return;
+    this.clearPending();
+    this.setCommands({ unresolved: null, canDismiss: false });
+  };
+
+  cancel = async (orderId: string): Promise<Outcome> => {
+    const refused = this.refusal();
+    if (refused) return { kind: 'rejected', message: refused };
+    const token = this.token as string;
+    const epoch = this.epoch;
+    const label = orderId.slice(0, 8);
+    this.setCommands({ busy: true, feedback: null });
+    let outcome: Outcome;
+    try {
+      await this.env.rest.delete(
+        `/orders/${encodeURIComponent(orderId)}`,
+        token,
+      );
+      if (epoch !== this.epoch) return this.superseded();
+      outcome = {
+        kind: 'accepted',
+        message: `Order ${label} cancelled. Its reservation is released.`,
+      };
+    } catch (error) {
+      if (epoch !== this.epoch) return this.superseded();
+      outcome = await this.cancelFailure(error, orderId, token, epoch);
+    }
+    this.setCommands({ busy: false, feedback: outcome });
+    this.refreshAfterCommand();
+    return outcome;
+  };
+
+  /** A lost race or unknown result: show the order's actual state. */
+  private async cancelFailure(
+    error: unknown,
+    orderId: string,
+    token: string,
+    epoch: number,
+  ): Promise<Outcome> {
+    const label = orderId.slice(0, 8);
+    if (error instanceof RestFailure && error.kind === 'not_found')
+      return { kind: 'rejected', message: `Order ${label} was not found.` };
+    if (error instanceof RestFailure && error.kind === 'unauthenticated') {
+      this.stopPrivate('rejected');
+      return { kind: 'rejected', message: 'Your token is no longer accepted.' };
+    }
+    try {
+      const raw = object(
+        await this.env.rest.get(
+          `/orders/${encodeURIComponent(orderId)}`,
+          token,
+        ),
+      );
+      if (epoch !== this.epoch || !this.sameProcess(text(raw.process_id)))
+        return this.superseded();
+      const current = decodeOrder(raw.data);
+      if (this.account) this.account = applyOrders(this.account, [raw.data]);
+      const finished =
+        current.status === 'filled' || current.status === 'cancelled';
+      return finished
+        ? {
+            kind: 'info',
+            message: `Order ${label} ${STATUS_TEXT[current.status]}; it finished before the cancellation took effect.`,
+          }
+        : {
+            kind: 'rejected',
+            message: `The cancellation of order ${label} was not confirmed; the order ${STATUS_TEXT[current.status]}. Try again.`,
+          };
+    } catch {
+      return {
+        kind: 'unresolved',
+        message: `The cancellation of order ${label} was not confirmed. Its state will update when the connection recovers.`,
+      };
+    }
+  }
+
+  private refreshAfterCommand() {
+    const link = this.privateLink;
+    const token = this.token;
+    if (link && token && this.account) void this.refreshBalances(link, token);
   }
 
   // ---- View composition ----

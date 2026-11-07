@@ -175,6 +175,26 @@ export function OrderTicket() {
           {reason}
         </p>
       )}
+      {trading.unresolved && (
+        <div className={cx('credential-actions')}>
+          <UnstyledButton
+            className={cx('button')}
+            type="button"
+            onClick={trading.checkUnresolved}
+          >
+            Check again
+          </UnstyledButton>
+          {trading.dismissUnresolved && (
+            <UnstyledButton
+              className={cx('button danger-quiet')}
+              type="button"
+              onClick={trading.dismissUnresolved}
+            >
+              Dismiss
+            </UnstyledButton>
+          )}
+        </div>
+      )}
       <p
         className={cx(
           'inline-feedback',

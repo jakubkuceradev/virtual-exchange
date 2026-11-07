@@ -35,6 +35,7 @@ for chart geometry and percentages.
 | [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root; the build mode (`--mode mock` or live) picks it and it never switches at runtime. |
 | [live/source.ts](src/live/source.ts) / `useLiveSource` | Live source over one `LiveSession`, through the same-origin `/exchange` proxy. |
 | [live/session.ts](src/live/session.ts) | Public (book, trades) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. |
+| Commands (in [live/session.ts](src/live/session.ts)) | Submit/cancel over REST: increment validation, one UUIDv4 per deliberate action, busy/unresolved/rejected outcomes from stable codes, lookup by client ID after an ambiguous reply (never an automatic resubmit), dismissal only after a resync also misses it, cancel races resolved by reading the order, coalesced balance refresh. |
 | [live/protocol.ts](src/live/protocol.ts) | Frame assembler: subscription baselines, fragments, book snapshot brackets, per-channel sequences, heartbeat gap checks, process identity. |
 | [live/market.ts](src/live/market.ts), [live/account.ts](src/live/account.ts) | Pure reducers: book levels, deduplicated trades, candles/statistics from executions only; versioned orders, deduplicated fills, commit-ordered balances. |
 | [live/rest.ts](src/live/rest.ts), [live/wire.ts](src/live/wire.ts) | REST client with outcome classification and cursor paging; wire decoders. |
