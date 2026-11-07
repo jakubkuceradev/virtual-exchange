@@ -59,6 +59,7 @@ class OrderSnapshot:
     client_order_id: str | None = None
     cancelled_quantity: Decimal = Decimal(0)
     prevented_quantity: Decimal = Decimal(0)
+    commit_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class Fill:
     price: Decimal
     quantity: Decimal
     executed_at: datetime
+    commit_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)
