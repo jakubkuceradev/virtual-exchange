@@ -1,0 +1,31 @@
+# Production server for the website image: static build plus same-origin
+# forwarding of the exchange. The /exchange prefix is the browser contract
+# shared with the Vite dev/preview proxy (see wiki/development.md).
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# HTTP API and WebSocket upgrades; the prefix is stripped, so
+	# /exchange/ws reaches the exchange's /ws. The upstream hostname is
+	# resolved on every dial, so recreating the exchange container is safe.
+	handle_path /exchange/* {
+		reverse_proxy {$EXCHANGE_UPSTREAM} {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header ?Cache-Control "no-cache"
+		file_server
+	}
+}

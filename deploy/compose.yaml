@@ -1,0 +1,42 @@
+# VM deployment of the published images. See deploy/README.md.
+name: virtual-exchange
+
+services:
+  exchange:
+    image: ghcr.io/jakubkuceradev/virtual-exchange/exchange:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      EXCHANGE_AUTH_CONFIG: /run/exchange-config/auth.json
+      EXCHANGE_TRADING_CONFIG: /run/exchange-config/trading.json
+    volumes:
+      - type: bind
+        source: ${EXCHANGE_CONFIG_DIR:?set EXCHANGE_CONFIG_DIR to the private config directory}
+        target: /run/exchange-config
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [private]
+
+  website-backend:
+    image: ghcr.io/jakubkuceradev/virtual-exchange/website-backend:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    networks: [private]
+
+  website:
+    image: ghcr.io/jakubkuceradev/virtual-exchange/website:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      EXCHANGE_UPSTREAM: exchange:8000
+    depends_on:
+      exchange:
+        condition: service_healthy
+    ports:
+      # Only the host reverse proxy reaches the site; nothing listens publicly.
+      - "127.0.0.1:${WEBSITE_PORT:-8080}:8080"
+    networks: [private, public]
+
+networks:
+  # No outbound or host access; exchange and website-backend publish no ports.
+  private:
+    internal: true
+  public: {}

@@ -165,7 +165,7 @@ and has an HTTP healthcheck. The default stack has no volumes, credentials, or
 databases. Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
 Neither health endpoint depends on the other service. Build needs
 network access to registries and package sources; runtime needs no external
-service. This is local scaffolding, not production deployment configuration.
+service. This is local scaffolding; the VM deployment is described in [deployment](/deployment.md).
 
 For Docker without Compose:
 
@@ -194,6 +194,8 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | website/frontend/e2e/ | Production browser interaction checks |
 | website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
 | compose.yaml, .github/workflows/ | Shared local startup and CI |
+| website/frontend/Dockerfile, Caddyfile | Production website image: static build plus `/exchange` forwarding |
+| deploy/ | VM deployment Compose, synthetic example config, smoke test, operator guide |
 | wiki/ | Project knowledge and offline visual overview |
 
 The exchange, website backend, and frontend build/run independently. The React

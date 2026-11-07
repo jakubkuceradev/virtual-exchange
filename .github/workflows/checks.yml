@@ -92,3 +92,35 @@ jobs:
         run: docker compose logs
       - if: always()
         run: docker compose down
+
+  deploy:
+    name: deployment topology
+    runs-on: ubuntu-latest
+    env:
+      EXCHANGE_CONFIG_DIR: ${{ github.workspace }}/deploy/examples
+      COMPOSE_FILE: deploy/compose.yaml:deploy/compose.build.yaml
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.15.2"
+      - run: docker compose config --quiet
+      - run: docker compose up --build --wait --wait-timeout 180
+      - name: Check website, exchange forwarding and WebSocket heartbeats
+        run: uv run --project exchange --locked python deploy/smoke_test.py http://127.0.0.1:8080
+      - name: Check isolation and image metadata
+        run: |
+          for service in exchange website-backend; do
+            test -z "$(docker port "$(docker compose ps -q "$service")")"
+          done
+          for service in exchange website-backend website; do
+            test "$(docker compose exec -T "$service" id -u)" != 0
+            image="virtual-exchange/$service:local"
+            test "$(docker image inspect --format '{{ if .Config.Healthcheck }}yes{{ end }}' "$image")" = yes
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")" = https://github.com/jakubkuceradev/virtual-exchange
+          done
+      - if: always()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down

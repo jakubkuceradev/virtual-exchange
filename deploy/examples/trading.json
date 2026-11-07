@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "instrument": {
+    "instrument_id": "ABC-USD",
+    "base_asset": "ABC",
+    "quote_asset": "USD",
+    "price_increment": "0.01",
+    "quantity_increment": "0.1"
+  },
+  "accounts": {
+    "alice": {
+      "cash": "1000",
+      "asset": "0"
+    },
+    "bob": {
+      "cash": "0",
+      "asset": "10"
+    }
+  }
+}
