@@ -144,7 +144,7 @@ def test_scheme_is_case_insensitive(authenticator):
 def test_health_ignores_optional_credentials(authenticator, headers):
     with TestClient(create_app(authenticator=authenticator)) as client:
         assert client.get("/health", headers=headers).json() == {"status": "ok"}
-        assert client.get("/orders", headers=headers).status_code == 404
+        assert client.get("/does-not-exist", headers=headers).status_code == 404
 
 
 def test_tokens_in_query_or_form_do_not_authenticate(authenticator):
