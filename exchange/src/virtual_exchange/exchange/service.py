@@ -36,6 +36,7 @@ from virtual_exchange.exchange.store import (
 )
 from virtual_exchange.types import (
     Acceptance,
+    AccountObservation,
     AccountSnapshot,
     AuthenticatedIdentity,
     Balance,
@@ -148,6 +149,13 @@ class Exchange:
         self._failed = False
         self._on_store_failure = on_store_failure
         self._state = _State(engine, ledger, {}, recovered.commit_id)
+        # Accounts appear only at startup, so their directory is fixed here.
+        self._directory = {
+            account: (policy, created_at)
+            for account, (_, _, policy, created_at) in sorted(
+                recovered.accounts.items()
+            )
+        }
 
     def _recover(
         self,
@@ -187,11 +195,11 @@ class Exchange:
             ledger = Ledger(
                 {
                     account: (cash, asset)
-                    for account, (cash, asset, _) in recovered.accounts.items()
+                    for account, (cash, asset, *_) in recovered.accounts.items()
                 },
                 frozenset(
                     account
-                    for account, (_, _, policy) in recovered.accounts.items()
+                    for account, (_, _, policy, _) in recovered.accounts.items()
                     if policy == Funding.UNLIMITED
                 ),
             )
@@ -700,6 +708,34 @@ class Exchange:
         async with self._locked():
             account = self._account(identity, Permission.READ)
             return self._state.sequence, self._balances(account)
+
+    async def list_accounts(
+        self, *, identity: AuthenticatedIdentity
+    ) -> tuple[int, tuple[AccountObservation, ...]]:
+        """Return every account's funding, creation time, totals and fill count.
+
+        All rows describe one commit: memory and the store agree under the lock.
+
+        The caller needs only the grant: an observer is not a trading account.
+        Cost follows the number of accounts, never history.
+        """
+        require_permission(identity=identity, permission=Permission.OBSERVE_ACCOUNTS)
+        async with self._locked():
+            total = self._state.ledger.total
+            fills = self._store.fill_counts()
+            return self._state.sequence, tuple(
+                AccountObservation(
+                    account,
+                    policy,
+                    created_at,
+                    decimal(total[account][0], self.amounts.cash_increment),
+                    decimal(
+                        total[account][1], self.amounts.instrument.quantity_increment
+                    ),
+                    fills[account],
+                )
+                for account, (policy, created_at) in self._directory.items()
+            )
 
     async def list_instruments(self) -> tuple[Instrument, ...]:
         return (self.amounts.instrument,)

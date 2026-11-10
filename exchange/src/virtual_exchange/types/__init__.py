@@ -25,6 +25,7 @@ from virtual_exchange.types.operations import (
     LimitOrder,
 )
 from virtual_exchange.types.trading import (
+    AccountObservation,
     Balance,
     Fill,
     Funding,
@@ -39,6 +40,7 @@ from virtual_exchange.types.trading import (
 
 __all__ = [
     "Acceptance",
+    "AccountObservation",
     "AccountSnapshot",
     "Cancellation",
     "LimitOrder",

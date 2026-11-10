@@ -132,13 +132,14 @@ Use one Uvicorn worker: state is process-local, not shared between workers.
 | GET /orders/{id} | read + ownership; snapshot, also supports client:<uuid> |
 | GET /orders, /fills, /balances | read; own observations only |
 | GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines (`{"orders": n, "fills": n}`) |
+| GET /accounts | observe_accounts; every account at one commit (see below) |
 | GET /instruments, /book, /trades | public, ignores optional credentials |
 
 POST requires instrument_id, side, price and quantity, with optional
 time_in_force (`GTC` or `IOC`); amounts must be canonical
 unsigned decimal strings such as `100` or `0.5` (no exponents, signs, separators,
 whitespace or leading zeros). Responses use plain decimal notation, scaled to the
-relevant increment. /book and /balances include the commit_id they describe. Optional type must be limit; optional client_order_id is a canonical
+relevant increment. /book, /balances and /accounts include the commit_id they describe. Optional type must be limit; optional client_order_id is a canonical
 UUIDv4. Extra fields are rejected; client account selectors never establish identity.
 No final fills/status are included in the submission receipt. Commands may finish
 before the receipt arrives; a lost response can be reconciled with GET
@@ -161,6 +162,26 @@ the opposite. Private fills keep their own-order `side` and `liquidity`.
 `exchange/tests/test_trading_api.py` verifies real HTTP trades, exact balances,
 permissions/ownership, malformed input, client-ID recovery, pagination, public
 privacy, disabled trading, and authentication before malformed-body parsing.
+
+## Account observations
+
+`GET /accounts` lists every account the store knows, sorted by `account_id`, in
+the `/balances` envelope (`process_id`, `commit_id`, `data`). Each row has
+`account_id`, `funding` (`funded`/`unlimited`), `created_at` (UTC ISO 8601, when
+the store first recorded the account; accounts in one startup share it) and
+total `cash` (quote asset) and `asset` (base asset), reserved amounts included,
+and `fill_count`, the number of fills the account has ever received (eligibility
+needs a fill in the period, and totals alone can miss fills that net out).
+Unlimited accounts may be negative; bot accounts are listed and consumers
+filter on `funding`. The response is `Cache-Control: no-store`.
+
+It requires the operator-granted `observe_accounts` permission, intended for
+the website backend's token, and not that the caller's own account is
+provisioned. Accounts appear only at startup, so the listing reads memory under
+the exchange lock: one consistent commit, cost proportional to the number of
+accounts, never to history. No pagination; accounts number in the hundreds.
+The exchange publishes these facts only; valuation and rankings belong to the
+website backend ([competition](/competition.md)).
 
 ## WebSocket observations
 

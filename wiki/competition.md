@@ -40,9 +40,9 @@ scripts, hosted sandbox strategies on their accounts) is ranked normally.
 - **Ownership:** the exchange publishes the policy as a fact and knows nothing
   of rankings; the website backend owns the eligibility rule. No separate
   website exclusion list, which could drift from exchange configuration.
-- **Delivery:** the policy travels with the per-account data the ranking data
-  slice defines (for example an account listing with `account_id` and
-  `funding`), so balances never arrive without eligibility. Not yet exposed.
+- **Delivery:** the policy travels with each row of the exchange's
+  `GET /accounts` listing ([account observations](/trading-slice.md#account-observations)),
+  so balances never arrive without eligibility.
 
 Rankings are part of the intended project scope and can be established after
 the [first working trading slice](/development-priorities.md).

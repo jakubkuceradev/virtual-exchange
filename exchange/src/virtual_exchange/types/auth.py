@@ -10,6 +10,7 @@ class Permission(StrEnum):
     READ = "read"
     TRADE = "trade"
     PUBLISH_NEWS = "publish_news"
+    OBSERVE_ACCOUNTS = "observe_accounts"
 
 
 @dataclass(frozen=True, slots=True)
