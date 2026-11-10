@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Response
 from virtual_exchange.auth import Authenticator
 from virtual_exchange.exchange import Exchange
 from virtual_exchange.http_auth import identity_dependency, register_auth_errors
+from virtual_exchange.news_api import register_news
 from virtual_exchange.stream_api import register_streams
 from virtual_exchange.trading_api import register_trading
 from virtual_exchange.types import AuthenticatedIdentity
@@ -53,5 +54,6 @@ def create_app(
         }
 
     register_trading(app, exchange=exchange, authenticator=authenticator)
+    register_news(app, exchange=exchange, authenticator=authenticator)
     register_streams(app, exchange=exchange, authenticator=authenticator)
     return app

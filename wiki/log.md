@@ -2,6 +2,8 @@
 
 ## 2026-11-10
 
+* **Market news (exchange)**: Added the operator-granted `publish_news` permission, `POST /news`, public newest-first `GET /news` with the standard cursor/high-watermark paging, and the public `news` WebSocket channel whose sequence equals the item count for exact recovery. News is in memory, creates no trading commit, accepts past `event_at`, and rejects whitespace-only headlines.
+
 * **Exchange bot support**: Added IOC time in force, the maker side on public trades, and operator-configured unlimited-funding accounts whose cash and asset may go negative. Decided bot exclusion from rankings: the website ranks only `funded` accounts using the exchange-published funding policy, with every operator bot configured `unlimited`; publication comes with the ranking data slice. The bot-funding tradeoff is decided.
 
 ## 2026-11-07

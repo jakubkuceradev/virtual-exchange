@@ -9,6 +9,7 @@ class Permission(StrEnum):
 
     READ = "read"
     TRADE = "trade"
+    PUBLISH_NEWS = "publish_news"
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,7 @@ title: Exchange Authentication
 # Exchange authentication
 
 The exchange resolves operator-provisioned opaque bearer tokens to trusted account
-IDs and independent `read`/`trade` grants. Authentication owns no balances, bot
+IDs and independent `read`, `trade` and `publish_news` grants ([market news](/market-news.md)). Authentication owns no balances, bot
 funding, or matching policy. Registration, browser sessions, email delivery,
 automatic expiry, and live credential management are deferred.
 
