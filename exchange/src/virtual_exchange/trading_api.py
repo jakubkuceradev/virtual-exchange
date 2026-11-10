@@ -21,6 +21,7 @@ from virtual_exchange.types import (
     LimitOrder,
     OrderSide,
     Permission,
+    TimeInForce,
 )
 
 # Canonical unsigned decimal strings only: no exponents, signs, separators or
@@ -36,6 +37,7 @@ class LimitOrderRequest(BaseModel):
     quantity: StrictStr
     client_order_id: StrictStr | None = None
     type: Literal["limit"] = "limit"
+    time_in_force: TimeInForce = TimeInForce.GTC
 
     def order(self) -> LimitOrder:
         if not all(_AMOUNT.fullmatch(v) for v in (self.price, self.quantity)):
@@ -46,6 +48,7 @@ class LimitOrderRequest(BaseModel):
             Decimal(self.price),
             Decimal(self.quantity),
             self.client_order_id,
+            self.time_in_force,
         )
 
 

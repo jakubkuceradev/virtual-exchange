@@ -29,5 +29,6 @@ core does not require accounts, website, competition, or bots.
 ## Deferred milestones
 
 Persistence/recovery across restarts, website integration, rankings, deposits,
-withdrawals, margin and special bot funding remain deferred. Funded-slice
+withdrawals and margin remain deferred; operator-assigned unlimited funding is
+implemented. Funded-slice
 REST/retry/stream contracts are recorded in [funded trading](/trading-slice.md).

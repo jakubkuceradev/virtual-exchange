@@ -27,6 +27,7 @@ from virtual_exchange.types import (
     Cancellation,
     Execution,
     Fill,
+    Funding,
     Instrument,
     LimitOrder,
     Liquidity,
@@ -112,7 +113,9 @@ class Exchange:
         *,
         instrument: Instrument,
         allocations: Mapping[str, tuple[Decimal, Decimal]],
+        funding: Mapping[str, Funding] | None = None,
     ) -> None:
+        """Accounts absent from funding are funded; only operators assign policy."""
         self.amounts = Amounts(instrument)
         values = {}
         for account, (cash, asset) in allocations.items():
@@ -122,13 +125,23 @@ class Exchange:
                 self.amounts.allocation(cash, cash=True),
                 self.amounts.allocation(asset, cash=False),
             )
+        funding = dict(funding or {})
+        if not set(funding) <= set(values) or any(
+            not isinstance(policy, Funding) for policy in funding.values()
+        ):
+            raise OrderRejected("funding must assign a Funding to allocated accounts")
+        unlimited = frozenset(
+            account
+            for account, policy in funding.items()
+            if policy == Funding.UNLIMITED
+        )
         self.process_id = str(uuid4())
         self._subscribers: set[Subscription] = set()
         self._cursor_key = uuid4().bytes
         self._lock = asyncio.Lock()
         self._state = _State(
             MatchingEngine(instrument=instrument),
-            Ledger(values),
+            Ledger(values, unlimited),
             {},
             {account: [] for account in values},
             {account: [] for account in values},
@@ -139,8 +152,8 @@ class Exchange:
     @classmethod
     def from_config(cls, *, path: str | Path) -> Exchange:
         try:
-            instrument, allocations = load_config(path)
-            return cls(instrument=instrument, allocations=allocations)
+            instrument, allocations, funding = load_config(path)
+            return cls(instrument=instrument, allocations=allocations, funding=funding)
         except ValueError, ArithmeticError, TypeError:
             raise TradingConfigurationError("Invalid trading configuration") from None
 
@@ -192,6 +205,7 @@ class Exchange:
                 price=order.price,
                 quantity=order.quantity,
                 client_order_id=order.client_order_id,
+                time_in_force=order.time_in_force,
             )
             candidate.executions = result.executions
             for snapshot in (*result.changed_resting_orders, result.order):
@@ -604,4 +618,5 @@ def _trade(execution: Execution) -> Trade:
         execution.executed_at,
         execution.maker_order_id,
         execution.taker_order_id,
+        execution.side,
     )

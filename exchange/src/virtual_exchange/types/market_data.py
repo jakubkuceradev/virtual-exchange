@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from virtual_exchange.types.trading import OrderSide
+
 
 @dataclass(frozen=True, slots=True)
 class BookLevel:
@@ -26,7 +28,11 @@ class OrderBookSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class Trade:
-    """Describe an anonymous execution with exchange order linkage."""
+    """Describe an anonymous execution with exchange order linkage.
+
+    side is the maker (resting) order's side, following Coinbase match messages;
+    the taker's side is the opposite.
+    """
 
     trade_id: str
     instrument_id: str
@@ -35,6 +41,7 @@ class Trade:
     executed_at: datetime
     maker_order_id: str
     taker_order_id: str
+    side: OrderSide
 
 
 @dataclass(frozen=True, slots=True)

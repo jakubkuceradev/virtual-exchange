@@ -1,4 +1,4 @@
-"""Own funded spot balances and reservations in exact integer units."""
+"""Own spot balances, reservations and funding policy in exact integer units."""
 
 from collections.abc import Iterable, Mapping
 
@@ -12,12 +12,20 @@ class InsufficientFunds(ValueError):
 
 
 class Ledger:
-    def __init__(self, allocations: Mapping[str, tuple[int, int]]) -> None:
+    """Unlimited accounts keep the same holds and settlement but are never
+    limited by funds, so their balances and available amounts may go negative."""
+
+    def __init__(
+        self,
+        allocations: Mapping[str, tuple[int, int]],
+        unlimited: frozenset[str] = frozenset(),
+    ) -> None:
         self.total = dict(allocations)
         self.held = dict.fromkeys(allocations, (0, 0))
+        self.unlimited = unlimited
 
     def fork(self) -> Ledger:
-        candidate = Ledger(self.total)
+        candidate = Ledger(self.total, self.unlimited)
         candidate.held = self.held.copy()
         return candidate
 
@@ -27,7 +35,9 @@ class Ledger:
         cash_cost, asset_cost = (
             (ticks * lots, 0) if side == OrderSide.BUY else (0, lots)
         )
-        if cash - held_cash < cash_cost or asset - held_asset < asset_cost:
+        if account not in self.unlimited and (
+            cash - held_cash < cash_cost or asset - held_asset < asset_cost
+        ):
             raise InsufficientFunds("insufficient_funds")
         self.held[account] = (held_cash + cash_cost, held_asset + asset_cost)
 
@@ -68,6 +78,9 @@ class Ledger:
             held[order.account_id] = cash, asset
         for account, (cash, asset) in self.total.items():
             hc, ha = held[account]
-            if min(cash, asset, hc, ha, cash - hc, asset - ha) < 0:
+            bounded = (hc, ha)
+            if account not in self.unlimited:
+                bounded += (cash, asset, cash - hc, asset - ha)
+            if min(bounded) < 0:
                 raise RuntimeError("inconsistent ledger candidate")
         self.held = held

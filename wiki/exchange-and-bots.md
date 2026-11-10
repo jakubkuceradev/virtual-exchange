@@ -31,8 +31,11 @@ traders, and whales. Strategies and special authentication details belong in a
 separate private repository.
 
 Bots obey essentially the same trading rules as participants, with effectively
-unlimited money as the main exception. How this funding is represented, whether
-it extends to asset inventory, and any other exceptions remain undecided.
+unlimited money as the main exception. The operator marks such accounts
+`funding: unlimited` in configuration; both cash and asset may then go negative
+while settlement records the net position. See
+[unlimited funding](/trading-slice.md#unlimited-funding). Other exceptions remain
+undecided.
 Special authentication does not yet imply any defined additional permissions.
 
 Whether bots use internal reference prices is unresolved. Such a reference
