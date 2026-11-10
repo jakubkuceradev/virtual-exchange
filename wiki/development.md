@@ -28,8 +28,17 @@ curl http://127.0.0.1:8000/health
 
 Expect HTTP 200 and `{"status":"ok"}`. Health reports API liveness only.
 Unknown routes and generated API docs return 404. Trading/private routes require
-configured allocations and credentials; see [funded trading](/trading-slice.md). Ctrl+C
-stops the server. No credentials, database, or private bot repository are needed.
+configured allocations, credentials and an initialised store; see
+[funded trading](/trading-slice.md) and [persistence](/persistence.md):
+
+```sh
+export EXCHANGE_STATE_DIR="$HOME/.local/state/virtual-exchange"   # any directory
+mkdir -p "$EXCHANGE_STATE_DIR"
+uv run --project exchange --locked python -m virtual_exchange.admin init-store
+```
+
+Ctrl+C stops the server. Health needs no credentials, store or private bot
+repository.
 Dependency installation needs network access; normal runtime does not.
 
 Choose a different address or port with Uvicorn flags:
@@ -153,4 +162,4 @@ The exchange and website backend run independently. The frontend will receive
 its own dependencies, tests, and build configuration when its stack is chosen.
 See [public interfaces](/public-interfaces.md) for operations and dependency
 boundaries. Funded operations and live delivery share one configured exchange
-instance; run one Uvicorn worker because all state is in-memory.
+instance; run one Uvicorn worker, the store's only writer.

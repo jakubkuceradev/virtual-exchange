@@ -9,7 +9,8 @@ title: Funded Trading Slice
 instrument. An app-owned instance combines a balance-independent matching engine
 with operator allocations, reservations, immediate fee-free settlement, and
 private queries. Bots are ordinary API clients; the operator may assign an
-account unlimited funding (below). Persistence, deposits, withdrawals, margin,
+account unlimited funding (below). State is durable; see
+[persistence](/persistence.md). Deposits, withdrawals, margin,
 and shorting for funded accounts are deferred.
 
 ## Financial and consistency contract
@@ -36,17 +37,16 @@ Coinbase lifetime deduplication.
 
 One asyncio lock serializes commands and queries on one event loop. Every command
 reserves, matches, settles and validates against a private candidate; the complete
-candidate's changes are absorbed only after success. A candidate overlays retained
-history instead of copying it: only open orders, price-level totals and account
-balances are copied, and each command records its own changed orders, fills and
-client IDs. Command cost depends on the open book, accounts and the command's own
-changes, not on process lifetime; history queries page by slicing. Retained history
-still grows in memory until restart in this slice; the agreed direction is for
-persistence to move history to storage rather than keep it in memory. Private fills
+candidate's changes are written durably, then absorbed, only after success. A
+candidate copies only open orders, price-level totals and account balances, and
+records its own changed orders and fills. Command cost depends on the open book,
+accounts and the command's own changes; history lives in the store and pages by
+indexed range. Private fills
 carry `liquidity`: `maker` for the resting order, `taker` for the incoming order,
-following Coinbase's fill liquidity indicator. No durability or multi-worker consistency is
-promised. Restart restores configured allocations, new process identity, and no
-orders, fills, or holds; token configuration is independent.
+following Coinbase's fill liquidity indicator. Acknowledged commands are durable;
+restart restores the last committed state with a new process identity (see
+[persistence](/persistence.md)). One process is the only writer; there is no
+multi-worker consistency. Token configuration is independent.
 
 ## Time in force
 
@@ -88,8 +88,9 @@ bot) accounts, as decided in [competition](/competition.md#bot-exclusion).
 }}
 ```
 
-`funding` is optional (`funded` or `unlimited`); restart restores it with the
-allocations.
+`funding` is optional (`funded` or `unlimited`). Allocations apply when an account
+is new to the store; afterwards persisted balances win, and changing an existing
+account's funding or the instrument refuses startup.
 
 All amounts are strings, finite, nonnegative and exactly aligned to the relevant
 units. Invalid configuration fails with sanitized errors. The examples are
@@ -106,7 +107,7 @@ snapshot = await exchange.get_account_snapshot(identity=alice)
 ```
 
 The module-level trading stubs are replaced by this instance API. Public data
-comes from the same instance. Retained history is per-process; paginated results
+comes from the same instance. History persists across restarts; paginated results
 have signed account/filter/process-scoped cursors and an insertion high watermark.
 Order status is current at page read, not frozen across pages. Recovery snapshots
 contain coherent balances, retained orders and a fill watermark. REST and live adapters share this instance, as described below.
@@ -120,8 +121,8 @@ matching, settlement, and reconciliation.
 
 ## REST API
 
-Set EXCHANGE_TRADING_CONFIG to a private allocation JSON file before starting the
-app. Unset config disables trading/data with 503 while health and identity work.
+Set EXCHANGE_TRADING_CONFIG to a private allocation JSON file and
+EXCHANGE_STATE_DIR to an initialised store directory before starting the app. Unset config disables trading/data with 503 while health and identity work.
 Use one Uvicorn worker: state is process-local, not shared between workers.
 
 | Route | Permission and result |
@@ -193,7 +194,7 @@ outgoing size is at most 1 MiB. Channel gaps or interrupted bundles require reco
 Subscribe before reconciling: buffer incoming updates, GET /account/snapshot at
 commit S, fetch fills through its fill_high_watermark, deduplicate fills by fill_id,
 and apply order versions newer than S. Rebuild public book from each fresh stream
-snapshot. Trade history is retained per process and can be reconciled by stable
+snapshot. Trade history persists across restarts and can be reconciled by stable
 trade_id; public trade pages return newest first within their fixed high watermark. A changed process_id invalidates old observations and cursors. There is
 no durable replay or exactly-once delivery. These are project schemas, inspired by
 Coinbase public level2_batch absolute quantities; immediate post-commit delivery,
@@ -218,5 +219,6 @@ provides cancellation-safe cleanup. Run one process/worker. HTTP/WebSocket tests
 cover both command/subscription orderings, owner isolation, self-trade updates,
 ordered multiple fills, reconnect, restart, bounds, timeout and cleanup. A real
 Uvicorn loopback demo observed all four event channels and Alice's 800 cash/2 units
-with zero holds; restart restored configured allocations and unchanged token identity.
+with zero holds. A later SIGKILL demo restored every observable exactly, with a new
+process ID, and commit and trade IDs continuing.
 TLS, proxies and production slow networks are not established by these local checks.
