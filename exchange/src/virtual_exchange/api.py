@@ -1,7 +1,10 @@
 """App-owned exchange, authentication, and funded REST operations."""
 
+import asyncio
+import contextlib
 import os
 import signal
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Response
@@ -38,11 +41,26 @@ def create_app(
             path=path, state_dir=state_dir, on_store_failure=_terminate
         )
     authenticated_identity = identity_dependency(authenticator)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if exchange is None:
+            yield
+            return
+        retention = asyncio.create_task(exchange.run_retention())
+        try:
+            yield
+        finally:
+            retention.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await retention
+
     app = FastAPI(
         title="Virtual Exchange",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        lifespan=lifespan,
     )
     register_auth_errors(app)
 

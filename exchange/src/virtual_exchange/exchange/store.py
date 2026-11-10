@@ -404,6 +404,16 @@ class Store:
                 [(cash, asset, account) for account, (cash, asset) in balances.items()],
             )
 
+    def prune(self, *, before: float, limit: int) -> int:
+        """Delete up to limit zero-fill terminal orders finished before a time."""
+        with self._transaction() as db:
+            return db.execute(
+                "DELETE FROM orders WHERE order_id IN (SELECT order_id FROM orders "
+                "WHERE terminal_at IS NOT NULL AND filled = 0 AND terminal_at < ? "
+                "LIMIT ?)",
+                (before, limit),
+            ).rowcount
+
     def append_news(self, seq: int, item: NewsItem) -> None:
         with self._transaction() as db:
             db.execute("INSERT INTO news VALUES (?, ?)", (seq, _encode(item)))

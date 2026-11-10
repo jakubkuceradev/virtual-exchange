@@ -395,3 +395,58 @@ async def test_failed_write_stops_trading_and_commits_nothing(state_dir):
     assert (await exchange.list_trades())["data"] == ()
     assert (await exchange.get_order_book()).asks[0].quantity == D(1)
     exchange.close()
+
+
+# ---- Retention ----
+
+
+@pytest.mark.anyio
+async def test_retention_prunes_only_old_zero_fill_terminal_orders(
+    state_dir, monkeypatch
+):
+    import time
+
+    from virtual_exchange.exchange import service
+
+    monkeypatch.setattr(service, "PRUNE_BATCH", 2)
+    alice, bob = identity("alice"), identity("bob")
+    exchange = reopen(state_dir)
+    cancelled = []
+    for index in range(5):
+        client = f"00000000-0000-4000-8000-00000000000{index}"
+        receipt = await exchange.submit_order(
+            identity=alice, order=buy("90", client=client)
+        )
+        await exchange.cancel_order(identity=alice, order_id=receipt.order_id)
+        cancelled.append((client, receipt.order_id))
+    resting = await exchange.submit_order(identity=alice, order=buy("95"))
+    await exchange.submit_order(identity=bob, order=sell())
+    filled = await exchange.submit_order(identity=alice, order=buy())
+    before = await exchange.get_account_snapshot(identity=alice)
+    fills = await exchange.list_fills(identity=alice)
+
+    assert await exchange.prune_history() == 0
+    later = time.time() + service.RETENTION_SECONDS + 60
+    assert await exchange.prune_history(now=later) == 5
+    for client, order_id in cancelled:
+        for lookup in (order_id, f"client:{client}"):
+            with pytest.raises(TradingError, match="order_not_found"):
+                await exchange.get_order(identity=alice, order_id=lookup)
+    after = await exchange.get_account_snapshot(identity=alice)
+    assert [o.order_id for o in after.orders] == [
+        resting.order_id,
+        filled.order_id,
+    ]
+    assert after.balances == before.balances
+    assert await exchange.list_fills(identity=alice) == {
+        **fills,
+        "commit_id": after.commit_id,
+    }
+    # Ordinals keep their meaning: the watermark is unchanged and pages skip gaps.
+    page = await exchange.list_orders(identity=alice, limit=4)
+    assert page["high_watermark"] == 7 and page["data"] == ()
+    rest = await exchange.list_orders(identity=alice, cursor=page["next_cursor"])
+    assert [o.order_id for o in rest["data"]] == [resting.order_id, filled.order_id]
+    # A pruned order's client ID is no longer reserved.
+    await exchange.submit_order(identity=alice, order=buy("90", client=cancelled[0][0]))
+    exchange.close()

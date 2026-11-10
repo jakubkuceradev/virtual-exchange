@@ -58,6 +58,11 @@ from virtual_exchange.types import (
 
 _log = logging.getLogger(__name__)
 
+# Terminal orders without fills are pruned after this long; everything else stays.
+RETENTION_SECONDS = 7 * 24 * 3600
+PRUNE_BATCH = 5000
+PRUNE_INTERVAL_SECONDS = 3600
+
 
 class TradingError(ValueError):
     """Expose a stable rejection code without private resource details."""
@@ -229,6 +234,32 @@ class Exchange:
         """Release the store; the instance must not be used afterwards."""
         self._failed = True
         self._store.close()
+
+    async def prune_history(self, *, now: float | None = None) -> int:
+        """Delete zero-fill terminal orders older than the retention period.
+
+        Batches hold the lock briefly, so commands interleave. Memory never holds
+        these orders, so a failed batch changes nothing visible and is retried.
+        """
+        before = (time.time() if now is None else now) - RETENTION_SECONDS
+        total = 0
+        while True:
+            async with self._locked():
+                deleted = self._store.prune(before=before, limit=PRUNE_BATCH)
+            total += deleted
+            if deleted < PRUNE_BATCH:
+                return total
+            await asyncio.sleep(0)
+
+    async def run_retention(self) -> None:
+        """Prune history now and then hourly until cancelled."""
+        while True:
+            try:
+                if deleted := await self.prune_history():
+                    _log.info("pruned %d expired orders", deleted)
+            except Exception:
+                _log.exception("history pruning failed; retrying later")
+            await asyncio.sleep(PRUNE_INTERVAL_SECONDS)
 
     @asynccontextmanager
     async def _locked(self) -> AsyncIterator[None]:
