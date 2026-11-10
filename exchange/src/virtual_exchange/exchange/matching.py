@@ -196,6 +196,7 @@ class MatchingEngine:
                     price=_decimal(maker_ticks, self._instrument.price_increment),
                     quantity=_decimal(removed, self._instrument.quantity_increment),
                     executed_at=now,
+                    side=maker_side,
                 )
             )
         order = self._snapshot(

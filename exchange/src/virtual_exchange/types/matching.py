@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from virtual_exchange.types.trading import OrderSnapshot
+from virtual_exchange.types.trading import OrderSide, OrderSnapshot
 
 
 @dataclass(frozen=True, slots=True)
 class Execution:
-    """Identify both sides of one matching execution."""
+    """Identify both sides of one matching execution; side is the maker's."""
 
     execution_id: str
     instrument_id: str
@@ -18,6 +18,7 @@ class Execution:
     price: Decimal
     quantity: Decimal
     executed_at: datetime
+    side: OrderSide
 
 
 @dataclass(frozen=True, slots=True)

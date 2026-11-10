@@ -604,4 +604,5 @@ def _trade(execution: Execution) -> Trade:
         execution.executed_at,
         execution.maker_order_id,
         execution.taker_order_id,
+        execution.side,
     )
