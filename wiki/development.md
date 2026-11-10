@@ -137,7 +137,7 @@ consistent copy). Restore by stopping the backend and copying a backup to
 | GET /competition/leaderboard | public; `computed_at` and per period `start`, `end`, `participant_count`, `rows` of `rank`, `account_id`, `return_percent` |
 | GET /competition/standings?period= | public; frozen finished periods, newest first, with `local_start` |
 | GET /competition/standings/{period}/{local_start} | public; one period's frozen rows |
-| GET /competition/me | caller's exchange bearer token (checked with exchange `/identity`); `value`, `funding` and per period `return_percent`, `rank` or null with `unranked_reason`, `participant_count` and `neighbourhood` (two ranks either side) |
+| GET /competition/me | caller's exchange bearer token (checked with exchange `/identity`); `value`, `funding` and per period `return_percent`, `baseline_value`, `rank` or null with `unranked_reason`, `participant_count` and `neighbourhood` (two ranks either side) |
 | GET /competition/me/series | caller's `{at, value}` every 10 minutes for up to one year |
 
 Current rankings return 503 `rankings_unavailable` before a mark exists or
