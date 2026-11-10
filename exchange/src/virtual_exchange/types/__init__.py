@@ -29,6 +29,7 @@ from virtual_exchange.types.trading import (
     OrderSnapshot,
     OrderStatus,
     SubmitOrderResult,
+    TimeInForce,
 )
 
 __all__ = [
@@ -51,5 +52,6 @@ __all__ = [
     "Permission",
     "SubmitOrderResult",
     "Ticker",
+    "TimeInForce",
     "Trade",
 ]

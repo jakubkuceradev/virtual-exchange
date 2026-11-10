@@ -192,6 +192,7 @@ class Exchange:
                 price=order.price,
                 quantity=order.quantity,
                 client_order_id=order.client_order_id,
+                time_in_force=order.time_in_force,
             )
             candidate.executions = result.executions
             for snapshot in (*result.changed_resting_orders, result.order):

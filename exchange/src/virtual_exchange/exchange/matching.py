@@ -26,6 +26,7 @@ from virtual_exchange.types import (
     OrderSide,
     OrderSnapshot,
     OrderStatus,
+    TimeInForce,
 )
 
 
@@ -92,9 +93,15 @@ class MatchingEngine:
         price: Decimal,
         quantity: Decimal,
         client_order_id: str | None = None,
+        time_in_force: TimeInForce = TimeInForce.GTC,
     ) -> MatchingResult:
-        """Validate then match at maker prices, resting any eligible remainder."""
+        """Validate then match at maker prices, resting any eligible remainder.
+
+        An IOC remainder is cancelled instead of resting, so it never enters the book.
+        """
         self._validate_id(account_id, "account_id")
+        if not isinstance(time_in_force, TimeInForce):
+            raise OrderRejected("time_in_force must be a TimeInForce")
         if client_order_id is not None:
             self._validate_id(client_order_id, "client_order_id")
         ticks, lots = Amounts(self._instrument).order(
@@ -116,6 +123,7 @@ class MatchingEngine:
             accepted_at=now,
             client_order_id=client_order_id,
             remaining_quantity=_decimal(lots, self._instrument.quantity_increment),
+            time_in_force=time_in_force,
         )
         remaining = lots
         executions = []
@@ -202,6 +210,16 @@ class MatchingEngine:
         order = self._snapshot(
             order, remaining=remaining, filled=filled, prevented=prevented
         )
+        if remaining and time_in_force == TimeInForce.IOC:
+            order = replace(
+                order,
+                status=OrderStatus.CANCELLED,
+                remaining_quantity=_decimal(0, self._instrument.quantity_increment),
+                cancelled_quantity=_decimal(
+                    remaining, self._instrument.quantity_increment
+                ),
+            )
+            remaining = 0
         self._orders[order_id] = order
         if remaining:
             self._resting[order_id] = (ticks, remaining)
