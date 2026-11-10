@@ -17,7 +17,8 @@ Callers request complete order operations. The exchange will own validation,
 command ordering, matching, reservations, settlement, durable acceptance, and
 retry behavior behind that boundary. HTTP handlers must not coordinate private
 reserve/match/settle/save steps. The app-owned Exchange implements funded in-process operations through a private
-candidate commit boundary; persistence and crash durability remain deferred.
+candidate commit boundary and commits each candidate durably to its SQLite store
+before responding; see [persistence](/persistence.md).
 
 Order state, balances, and executions must eventually be committed consistently
 before success. Merely sharing a process does not establish atomicity. Storage,
@@ -31,7 +32,8 @@ before matching, then consistently settle executions and release reservations.
 HTTP handlers must not coordinate these private steps. The first milestone is
 in-memory, resets on restart, and tests supplied eligible orders directly;
 the funded integration now coordinates candidate account/matching state before
-publishing it. This establishes in-process isolation, not crash durability.
+publishing it. [Persistence](/persistence.md) adds crash durability behind the
+same boundary.
 
 ## Independent changes
 

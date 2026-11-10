@@ -2,6 +2,8 @@
 
 ## 2026-11-10
 
+* **Exchange persistence**: Acknowledged commands are now durable. Each commit is written in one SQLite transaction (WAL, `synchronous=FULL`) before memory changes and before observations or the response; a failed write stops the exchange for recovery. Memory holds only the live book, balances and counters; history lives in the store. Restart restores the exact committed state, including queue priority and client IDs, with a new `process_id` and continuing commit IDs and watermarks. Persisted state wins over configuration; instrument or funding changes refuse startup. Stores are created only by `python -m virtual_exchange.admin init-store`, and `EXCHANGE_STATE_DIR` is required with trading. The website restart copy is a recorded TODO.
+
 * **Market news (exchange)**: Added the operator-granted `publish_news` permission, `POST /news`, public newest-first `GET /news` with the standard cursor/high-watermark paging, and the public `news` WebSocket channel whose sequence equals the item count for exact recovery. News is in memory, creates no trading commit, accepts past `event_at`, and rejects whitespace-only headlines.
 
 * **Exchange bot support**: Added IOC time in force, the maker side on public trades, and operator-configured unlimited-funding accounts whose cash and asset may go negative. Decided bot exclusion from rankings: the website ranks only `funded` accounts using the exchange-published funding policy, with every operator bot configured `unlimited`; publication comes with the ranking data slice. The bot-funding tradeoff is decided.

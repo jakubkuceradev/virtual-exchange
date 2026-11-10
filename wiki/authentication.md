@@ -69,7 +69,7 @@ health works, all private authentication fails, and no default token is created.
 The app loads once at construction. File changes/removal leave an existing app
 unchanged; new instances load the new configuration. Removing one token leaves
 other tokens for that account independent. Unchanged config survives restart,
-even though matching state currently resets. Keep files outside checkouts with
+as does trading state, which persists separately. Keep files outside checkouts with
 restricted operator access; never commit them, put raw tokens in URLs, log
 Authorization headers, or bake credentials into images. Use HTTPS for deployment;
 loopback HTTP is suitable for local development. Configure reverse-proxy and

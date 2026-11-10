@@ -29,7 +29,7 @@ The repository contains public-interface placeholders, a Python API scaffold,
 independent exchange/backend health endpoints, exchange bearer authentication
 and an identity endpoint, development
 checks, CI configuration, Docker/Compose support, and project documentation.
-An internal [matching core](/matching-core.md) now handles sequential in-memory
+An internal [matching core](/matching-core.md) now handles sequential
 limit orders. Configured funded trading, settlement, public observations and
 private live updates are implemented; competition rankings remain deferred. See
 [development setup](/development.md). The overview's boxes
@@ -43,13 +43,13 @@ The exchange/website public boundary is agreed. See [the visual overview](overvi
 | Responsibility | Intended role | Decision still needed |
 | --- | --- | --- |
 | Public API and authentication | Bearer identity and funded REST/live observations implemented | Deployment and later API expansion |
-| Order book and matching | Implemented sequential in-memory limit orders; see [matching core](/matching-core.md) | Concurrency, persistence, additional order types |
-| Accounts and settlement | Funded fee-free spot balances, holds and settlement implemented; operator-assigned unlimited funding | Persistence, fees |
+| Order book and matching | Implemented sequential limit orders with a durable store; see [matching core](/matching-core.md) and [persistence](/persistence.md) | Concurrency, additional order types |
+| Accounts and settlement | Funded fee-free spot balances, holds and settlement implemented; operator-assigned unlimited funding; persisted | Fees |
 | Market data | Expose quotes, order-book information, and trades | Data depth, history, streaming versus polling |
 | Website backend: competition and rankings | Rank participants continuously and by period from exchange data | Metrics, valuation, period boundaries, eligibility, bot inclusion |
 | Private bot clients | Submit orders under essentially the same trading rules, with effectively unlimited money | Other exceptions and initial liquidity policy |
 
-Persistence, recovery, and operational requirements have not yet been specified. A public-facing website and account-registration flow have not yet been defined.
+Persistence and recovery are specified and implemented; see [persistence](/persistence.md). A public-facing website and account-registration flow have not yet been defined.
 
 ## Documentation styling
 
