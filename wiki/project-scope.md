@@ -20,7 +20,7 @@ A separate private repository will contain simulated bots and their special
 authentication details. See [Exchange and bots](/exchange-and-bots.md).
 
 The runnable exchange lives in exchange/. The website backend is a separate
-health-only application; website/frontend/ remains a placeholder. Competition belongs to the website
+application that computes the rankings; website/frontend/ remains a placeholder. Competition belongs to the website
 backend and consumes exchange data; see [public interfaces](/public-interfaces.md).
 
 ## Current status

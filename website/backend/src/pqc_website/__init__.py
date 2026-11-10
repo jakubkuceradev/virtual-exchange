@@ -1,1 +1,1 @@
-"""Experimental website backend scaffold; interfaces are not yet finalized."""
+"""Website backend: health and the competition service; contracts are experimental."""
