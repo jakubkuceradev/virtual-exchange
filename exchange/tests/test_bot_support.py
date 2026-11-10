@@ -13,6 +13,7 @@ from virtual_exchange.auth import Authenticator
 from virtual_exchange.exchange import Exchange
 from virtual_exchange.exchange.configuration import TradingConfigurationError
 from virtual_exchange.exchange.ledger import InsufficientFunds
+from virtual_exchange.exchange.store import Store
 from virtual_exchange.types import (
     AuthenticatedIdentity,
     Funding,
@@ -393,17 +394,26 @@ async def test_configured_funding_survives_restart(tmp_path):
             "carol": {"cash": "5", "asset": "1", "funding": "unlimited"},
         },
     )
-    for _ in range(2):
-        exchange = Exchange.from_config(path=path)
-        assert await holdings(exchange, "carol") == {
-            "USD": (D(5), D(0)),
-            "ABC": (D(1), D(0)),
-        }
-        await submit(exchange, "carol", "buy", "100", "100")
-        with pytest.raises(InsufficientFunds):
-            await submit(exchange, "bob", "sell", "11", "100")
-        with pytest.raises(InsufficientFunds):
-            await submit(exchange, "alice", "buy", "11", "100")
+    Store.create(tmp_path)
+    exchange = Exchange.from_config(path=path, state_dir=tmp_path)
+    assert await holdings(exchange, "carol") == {
+        "USD": (D(5), D(0)),
+        "ABC": (D(1), D(0)),
+    }
+    await submit(exchange, "carol", "buy", "100", "100")
+    exchange.close()
+    # The persisted policy and the resting order's hold survive the restart.
+    exchange = Exchange.from_config(path=path, state_dir=tmp_path)
+    assert await holdings(exchange, "carol") == {
+        "USD": (D(-9995), D(10000)),
+        "ABC": (D(1), D(0)),
+    }
+    await submit(exchange, "carol", "buy", "100", "100")
+    with pytest.raises(InsufficientFunds):
+        await submit(exchange, "bob", "sell", "11", "100")
+    with pytest.raises(InsufficientFunds):
+        await submit(exchange, "alice", "buy", "11", "100")
+    exchange.close()
 
 
 @pytest.mark.parametrize(
@@ -420,7 +430,8 @@ async def test_configured_funding_survives_restart(tmp_path):
 )
 def test_invalid_funding_configuration_is_sanitized(tmp_path, account):
     path = write_config(tmp_path / "trading.json", {"carol": account})
+    Store.create(tmp_path)
     with pytest.raises(
         TradingConfigurationError, match="^Invalid trading configuration$"
     ):
-        Exchange.from_config(path=path)
+        Exchange.from_config(path=path, state_dir=tmp_path)

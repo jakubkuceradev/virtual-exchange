@@ -13,6 +13,7 @@ from virtual_exchange.exchange.configuration import TradingConfigurationError
 from virtual_exchange.exchange.ledger import InsufficientFunds, Ledger
 from virtual_exchange.exchange.matching import MatchingEngine
 from virtual_exchange.exchange.service import TradingError
+from virtual_exchange.exchange.store import Store
 from virtual_exchange.types import (
     AuthenticatedIdentity,
     Instrument,
@@ -244,7 +245,7 @@ async def test_client_id_deduplication_and_account_scope(exchange):
 
 
 @pytest.mark.anyio
-async def test_low_decimal_context_and_restart():
+async def test_low_decimal_context_and_new_store():
     with localcontext() as context:
         context.prec = 2
         instrument = Instrument("ABC-USD", "ABC", "USD", D("0.05"), D("0.03"))
@@ -300,7 +301,7 @@ def test_invalid_config_is_sanitized(tmp_path, contents):
     with pytest.raises(
         TradingConfigurationError, match="^Invalid trading configuration$"
     ):
-        Exchange.from_config(path=path)
+        Exchange.from_config(path=path, state_dir=tmp_path)
 
 
 def test_configuration_allocations(tmp_path):
@@ -320,7 +321,10 @@ def test_configuration_allocations(tmp_path):
             }
         )
     )
-    assert Exchange.from_config(path=path).amounts.instrument == INSTRUMENT
+    Store.create(tmp_path)
+    exchange = Exchange.from_config(path=path, state_dir=tmp_path)
+    assert exchange.amounts.instrument == INSTRUMENT
+    exchange.close()
     path.write_text(path.read_text().replace('"1000"', '"-1"'))
     with pytest.raises(TradingConfigurationError):
-        Exchange.from_config(path=path)
+        Exchange.from_config(path=path, state_dir=tmp_path)
