@@ -43,7 +43,9 @@ for the complete contracts, configuration, permissions and recovery.
 Exchange commands check grants and ownership, reserve, match and settle against a
 private candidate before committing. Submit returns Acceptance, not final fills;
 query OrderSnapshot, Fill and Balance separately. Public Trade includes maker/taker
-exchange IDs without owner IDs. Client UUIDs remain distinct from exchange IDs;
+exchange IDs without owner IDs and the maker's side. LimitOrder and OrderSnapshot
+carry TimeInForce (GTC/IOC); Exchange takes an optional per-account Funding
+mapping (funded/unlimited) that only operator configuration supplies. Client UUIDs remain distinct from exchange IDs;
 accepted UUIDs deduplicate per account/process via conflict and lookup, not replayed
 success responses. Legacy module-level market_data functions are still unsupported;
 use the app-owned Exchange observations. Module-level trading stubs were removed.

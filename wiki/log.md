@@ -1,5 +1,9 @@
 # Wiki Update Log
 
+## 2026-11-10
+
+* **Exchange bot support**: Added IOC time in force, the maker side on public trades, and operator-configured unlimited-funding accounts whose cash and asset may go negative. Decided bot exclusion from rankings: the website ranks only `funded` accounts using the exchange-published funding policy, with every operator bot configured `unlimited`; publication comes with the ranking data slice. The bot-funding tradeoff is decided.
+
 ## 2026-11-07
 
 * **Client-actionable wire fixes**: Bearer failures now return `{"error": code}` like other exchange errors; `/account/snapshot` channel baselines are an object, matching WebSocket control messages; refused subscriptions close 4401/4403 with the error code as reason instead of the protocol-error 1008.

@@ -22,7 +22,27 @@ Neither a final formula nor a choice between them has been agreed.
   liquidity to sell a whole portfolio at the last price.
 - Performance formulas and treatment of participants joining during a period.
 - Period boundaries and timezone, including calendar versus rolling windows.
-- Ranking eligibility, including whether bots appear in rankings.
+- Eligibility rules other than bot exclusion (below).
+
+## Bot exclusion
+
+Operator bots never appear in rankings. Participants' own automation (API
+scripts, hosted sandbox strategies on their accounts) is ranked normally.
+
+- **Marker:** the exchange's per-account [funding policy](/trading-slice.md#unlimited-funding).
+  Rankings include only `funded` accounts; every `unlimited` account is excluded.
+  An account with unlimited money has no meaningful return, so this rule
+  holds regardless of who runs the account.
+- **Invariant:** every operator bot account is configured `unlimited`. All
+  planned bots are. If a funded operator bot is ever needed, add an explicit
+  operator-account flag to the exchange configuration and exclude on either
+  marker; never infer from names or tokens.
+- **Ownership:** the exchange publishes the policy as a fact and knows nothing
+  of rankings; the website backend owns the eligibility rule. No separate
+  website exclusion list, which could drift from exchange configuration.
+- **Delivery:** the policy travels with the per-account data the ranking data
+  slice defines (for example an account listing with `account_id` and
+  `funding`), so balances never arrive without eligibility. Not yet exposed.
 
 Rankings are part of the intended project scope and can be established after
 the [first working trading slice](/development-priorities.md).
