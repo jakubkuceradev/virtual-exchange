@@ -169,7 +169,8 @@ Connect to /ws and subscribe once within 5 seconds:
 {"type":"subscribe","channels":["book","trades","orders","fills"],"token":"<private token>"}
 ```
 
-Public-only book/trades subscriptions need no token. Private orders/fills require
+Public-only book/trades/news subscriptions need no token; news is described in
+[market news](/market-news.md). Private orders/fills require
 a read grant and use only the token's provisioned account; no account selector
 is accepted. Invalid supplied tokens reject the whole subscription. Never send
 tokens in URLs or log subscription frames. There are no WebSocket order commands,

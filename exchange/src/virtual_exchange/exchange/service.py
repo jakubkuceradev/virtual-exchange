@@ -18,6 +18,7 @@ from virtual_exchange.exchange.configuration import (
 )
 from virtual_exchange.exchange.ledger import Ledger
 from virtual_exchange.exchange.matching import MatchingEngine
+from virtual_exchange.exchange.news import NewsLog, NewsRejected
 from virtual_exchange.exchange.observations import Subscription, frames
 from virtual_exchange.types import (
     Acceptance,
@@ -31,6 +32,8 @@ from virtual_exchange.types import (
     Instrument,
     LimitOrder,
     Liquidity,
+    NewsDraft,
+    NewsItem,
     OrderBookSnapshot,
     OrderSide,
     OrderSnapshot,
@@ -139,6 +142,7 @@ class Exchange:
         self._subscribers: set[Subscription] = set()
         self._cursor_key = uuid4().bytes
         self._lock = asyncio.Lock()
+        self._news = NewsLog(instrument_ids={instrument.instrument_id})
         self._state = _State(
             MatchingEngine(instrument=instrument),
             Ledger(values, unlimited),
@@ -304,6 +308,10 @@ class Exchange:
         # Encoding can fail and must happen before any authoritative mutation.
         bundles = self._prepare_observations(candidate)
         self._state.apply(candidate)
+        self._deliver(bundles)
+
+    def _deliver(self, bundles: tuple[tuple[str, str, tuple[str, ...]], ...]) -> None:
+        """Offer committed bundles to matching subscribers; never fails a command."""
         for subscription in self._subscribers:
             messages = tuple(
                 message
@@ -318,19 +326,14 @@ class Exchange:
         self, *, channels: frozenset[str], identity: AuthenticatedIdentity | None = None
     ) -> Subscription:
         async with self._lock:
-            if not channels or not channels <= {"book", "trades", "orders", "fills"}:
+            if not channels or not channels <= _CHANNELS:
                 raise TradingError("invalid_channels")
             account = None
             if channels & {"orders", "fills"}:
                 if identity is None:
                     raise TradingError("authentication_required", 401)
                 account = self._account(identity, Permission.READ)
-            baselines = {
-                channel: self._state.channels.get(
-                    (channel, account if channel in {"orders", "fills"} else ""), 0
-                )
-                for channel in sorted(channels)
-            }
+            baselines = self._channel_baselines(channels, account)
             initial = list(
                 frames(
                     process_id=self.process_id,
@@ -362,6 +365,19 @@ class Exchange:
             self._subscribers.add(subscription)
             return subscription
 
+    def _channel_baselines(
+        self, channels: frozenset[str], account: str | None
+    ) -> dict[str, int]:
+        """Report the last delivered sequence of each channel a subscriber sees."""
+        return {
+            channel: len(self._news)
+            if channel == "news"
+            else self._state.channels.get(
+                (channel, account if channel in {"orders", "fills"} else ""), 0
+            )
+            for channel in sorted(channels)
+        }
+
     async def unsubscribe(self, subscription: Subscription) -> None:
         async with self._lock:
             self._subscribers.discard(subscription)
@@ -369,18 +385,9 @@ class Exchange:
     async def heartbeat(self, subscription: Subscription) -> None:
         """Queue current baselines behind every earlier committed update."""
         async with self._lock:
-            baselines = {
-                channel: self._state.channels.get(
-                    (
-                        channel,
-                        subscription.account_id
-                        if channel in {"orders", "fills"}
-                        else "",
-                    ),
-                    0,
-                )
-                for channel in sorted(subscription.channels)
-            }
+            baselines = self._channel_baselines(
+                subscription.channels, subscription.account_id
+            )
             subscription.offer(
                 frames(
                     process_id=self.process_id,
@@ -606,6 +613,64 @@ class Exchange:
                 cursor=cursor,
                 newest_first=True,
             )
+
+    async def publish_news(
+        self, *, identity: AuthenticatedIdentity, draft: NewsDraft
+    ) -> NewsItem:
+        """Store and distribute one immutable item; needs only publish_news.
+
+        News creates no trading commit: its envelope names the latest commit.
+        """
+        async with self._lock:
+            require_permission(identity=identity, permission=Permission.PUBLISH_NEWS)
+            try:
+                item = self._news.prepare(draft)
+            except NewsRejected:
+                raise TradingError("invalid_request") from None
+            # Encoding can fail and must happen before the item is stored.
+            bundle = frames(
+                process_id=self.process_id,
+                channel="news",
+                sequence=len(self._news) + 1,
+                commit_id=self._state.sequence,
+                kind="update",
+                payload=(item,),
+            )
+            self._news.append(item)
+            self._deliver((("news", "", bundle),))
+            return item
+
+    async def list_news(
+        self,
+        *,
+        limit: int = 100,
+        cursor: str | None = None,
+        high_watermark: int | None = None,
+        instrument_id: str | None = None,
+    ) -> dict:
+        """Page news newest first; the filter applies after slicing."""
+        async with self._lock:
+            if instrument_id is not None and not self._news.is_listed(instrument_id):
+                raise TradingError("invalid_request")
+            page = self._page(
+                count=len(self._news),
+                fetch=self._news.items,
+                scope=f"news:{instrument_id or '*'}",
+                limit=limit,
+                cursor=cursor,
+                high_watermark=high_watermark,
+                newest_first=True,
+            )
+            if instrument_id is not None:
+                page["data"] = tuple(
+                    item
+                    for item in page["data"]
+                    if instrument_id in item.instrument_ids
+                )
+            return page
+
+
+_CHANNELS = frozenset({"book", "trades", "orders", "fills", "news"})
 
 
 def _trade(execution: Execution) -> Trade:

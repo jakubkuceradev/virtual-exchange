@@ -9,6 +9,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 ## Project knowledge
 
 - [Funded trading](/trading-slice.md) — Funded REST trading, live observations, recovery, and restart rules.
+- [Market news](/market-news.md) — Published news items, publish_news grant, list and channel recovery.
 - [Authentication](/authentication.md) — Configured bearer tokens, identity endpoint, grants, and restart lifecycle.
 - [Public interfaces](public-interfaces.md) — Experimental exchange/website contracts, public types, and current status.
 - [Development setup](development.md) — Exchange/backend startup, current versions, independent checks, and containers.
