@@ -50,6 +50,10 @@ def _percent(ret: Decimal | None) -> str | None:
     return None if ret is None else format((ret * 100).quantize(_PERCENT), "f")
 
 
+def _value(amount: Decimal | None) -> str | None:
+    return None if amount is None else format(amount.quantize(_VALUE), "f")
+
+
 def _rows(rows) -> list[dict]:
     return [
         {"rank": position, "account_id": account, "return_percent": _percent(ret)}
@@ -289,6 +293,7 @@ def create_app(
             result[standings.period.value] = {
                 **_period(standings),
                 "return_percent": _percent(position.ret),
+                "baseline_value": _value(position.baseline),
                 "rank": position.rank,
                 "unranked_reason": position.reason,
                 "neighbourhood": nearby,
@@ -297,7 +302,7 @@ def create_app(
             "account_id": account,
             "computed_at": _time(snapshot.computed_at),
             "funding": "funded" if snapshot.funded[account] else "unlimited",
-            "value": None if value is None else format(value.quantize(_VALUE), "f"),
+            "value": _value(value),
             "periods": result,
         }
 
@@ -313,8 +318,7 @@ def create_app(
             "account_id": account,
             "interval_seconds": 600,
             "points": [
-                {"at": _time(at), "value": format(value.quantize(_VALUE), "f")}
-                for at, value in points
+                {"at": _time(at), "value": _value(value)} for at, value in points
             ],
         }
 

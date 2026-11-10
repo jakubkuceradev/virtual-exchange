@@ -8,7 +8,7 @@ changes, so a failed write leaves the previous state intact for the next tick.
 
 import logging
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 
@@ -36,6 +36,7 @@ class Position:
     ret: Decimal | None
     rank: int | None
     reason: str | None
+    baseline: Decimal | None  # the account's value at its period baseline
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,10 +262,11 @@ class Competition:
             else:
                 reason = None
                 eligible.append((account, ret))
-            positions[account] = Position(ret, None, reason)
+            value = None if baseline is None else baseline.value
+            positions[account] = Position(ret, None, reason, value)
         ranked = rank(eligible)
-        for position, account, ret in ranked:
-            positions[account] = Position(ret, position, None)
+        for position, account, _ in ranked:
+            positions[account] = replace(positions[account], rank=position, reason=None)
         end = periods.end(kind, start) if start is not None else None
         return Standings(kind, start, end, ranked, positions)
 

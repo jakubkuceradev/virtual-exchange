@@ -184,6 +184,7 @@ def test_caller_sees_value_rank_neighbourhood_and_unranked_reason(setup):
     assert alice["value"] == "1100.00000000"
     weekly = alice["periods"]["weekly"]
     assert (weekly["rank"], weekly["return_percent"]) == (1, "10.000000")
+    assert weekly["baseline_value"] == "1000.00000000"
     assert [row["account_id"] for row in weekly["neighbourhood"]] == ["alice", "bob"]
     assert carol["funding"] == "unlimited"
     assert carol["periods"]["weekly"]["rank"] is None
