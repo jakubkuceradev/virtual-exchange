@@ -1,8 +1,10 @@
-"""Operator commands for the exchange store.
+"""Operator commands for the exchange store in EXCHANGE_STATE_DIR.
 
-Run ``python -m virtual_exchange.admin init-store`` once to create an empty
-store in EXCHANGE_STATE_DIR (or ``--state-dir``). The exchange never creates a
-store itself, so a missing volume fails startup instead of starting afresh.
+- ``init-store`` creates an empty store. The exchange never creates one itself,
+  so a missing volume fails startup instead of starting afresh.
+- ``backup-store DEST`` copies one committed state while trading runs.
+- ``restore-store SOURCE`` replaces the store with a backup; the exchange must
+  be stopped.
 """
 
 import argparse
@@ -21,15 +23,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init-store", help="create an empty exchange store")
+    backup = commands.add_parser("backup-store", help="copy the store while running")
+    backup.add_argument("destination", help="new file to write; must not exist")
+    restore = commands.add_parser(
+        "restore-store", help="replace the store with a backup (exchange stopped)"
+    )
+    restore.add_argument("source", help="a file written by backup-store")
     arguments = parser.parse_args(argv)
     if not arguments.state_dir:
         parser.error("set EXCHANGE_STATE_DIR or pass --state-dir")
     try:
-        path = Store.create(arguments.state_dir)
+        if arguments.command == "init-store":
+            path = Store.create(arguments.state_dir)
+            print(f"Created an empty exchange store at {path}")
+        elif arguments.command == "backup-store":
+            Store.backup(arguments.state_dir, arguments.destination)
+            print(f"Backed up the exchange store to {arguments.destination}")
+        else:
+            Store.restore(arguments.state_dir, arguments.source)
+            print(f"Restored the exchange store from {arguments.source}")
     except StoreError as error:
         print(error, file=sys.stderr)
         return 1
-    print(f"Created an empty exchange store at {path}")
     return 0
 
 

@@ -81,10 +81,53 @@ in-memory database, for tests and embedding.
 
 ## Retention
 
-Decided, not yet implemented: fills, trades, news and every order with a fill
-are kept indefinitely; terminal orders with zero fills are pruned after 7 days,
-after which `GET /orders/{id}` and client-ID lookups return not-found, and the
-client UUID is no longer reserved. Rankings need only fills and trades.
+Fills, trades, news and every order with a fill are kept indefinitely. Terminal
+orders with zero fills (cancelled, IOC remainders, self-trade prevented) are
+pruned 7 days after they finished; rankings need only fills and trades. After
+pruning, `GET /orders/{id}` and its client-ID lookup return not-found, the order
+leaves account snapshots and order pages, and its client UUID is no longer
+reserved. Order watermarks keep their meaning, so pages simply skip the gap.
+
+The app prunes at startup and then hourly, in batches of 5,000 rows, each
+under the command lock, so commands interleave. Pruning creates no commit and
+no observation. A failed batch changes nothing visible and is retried at the
+next run; SQLite reuses the freed pages, so no vacuum is needed.
+
+## Containers, backup and restore
+
+The image sets `EXCHANGE_STATE_DIR=/var/lib/virtual-exchange`, and Compose
+mounts the named volume `exchange-state` there. All exchange state lives in
+that volume and nothing else does, so replacing or rebuilding the image leaves
+it untouched. The API service uses `restart: unless-stopped`, so the fail-stop
+path restarts it into recovery. With a trading configuration
+mounted (see [development](/development.md)):
+
+```sh
+# once, before the first start
+docker compose run --rm --no-deps api python -m virtual_exchange.admin init-store
+
+# backup while trading runs: one consistent committed state (VACUUM INTO)
+docker compose exec api python -m virtual_exchange.admin backup-store /tmp/exchange-backup.sqlite3
+docker compose cp api:/tmp/exchange-backup.sqlite3 ./exchange-backup.sqlite3
+docker compose exec api rm /tmp/exchange-backup.sqlite3
+
+# restore: the exchange must be stopped
+docker compose stop api
+docker compose run --rm --no-deps -v "$PWD/exchange-backup.sqlite3:/restore.sqlite3:ro" \
+  api python -m virtual_exchange.admin restore-store /restore.sqlite3
+docker compose start api
+```
+
+`backup-store` reads one snapshot; WAL readers never block the writer. The
+destination must not exist and should leave the volume. `restore-store` checks
+the backup's integrity and schema, takes the single-writer lock (so it fails
+while the exchange runs), and removes the old WAL so it cannot replay onto the
+copy. It then replaces the file atomically. Clients see a new `process_id` and
+resynchronise to the restored state. Scheduling, retention and off-VM copies of
+backups are up to the operator.
+
+To start over (new season, test environment), remove the volume with
+`docker compose down -v` or `docker volume rm`, then run `init-store` again.
 
 ## Open items
 
@@ -99,8 +142,6 @@ client UUID is no longer reserved. Rankings need only fills and trades.
   the website's recovery contract, but a bot account with days of cancelled
   orders makes a large snapshot. Revisit (for example open orders only, with
   history from `GET /orders`) if bots call it.
-- Backup and restore procedure, the Compose volume and retention pruning follow
-  in the operations slice.
 
 ## Verification
 
@@ -110,6 +151,8 @@ crash trials at random points and at every commit stage (before the write,
 inside the transaction, after COMMIT, before delivery) with acknowledgement,
 atomicity and conservation checks, queue priority, restart identity and
 counters, configuration rules with an unchanged store on refusal, the explicit
-lifecycle and single-writer lock, and fail-stop on a write error.
+lifecycle and single-writer lock, fail-stop on a write error, retention
+(including paging across pruned gaps and multiple batches), and a backup drill
+that restores backups taken under load to committed prefixes.
 `exchange/tests/persistence_harness.py` is the crash child; set
 `PERSISTENCE_TRIALS=1000` for the full acceptance run (CI runs 25).

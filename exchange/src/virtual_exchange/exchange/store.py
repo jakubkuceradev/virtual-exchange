@@ -9,7 +9,9 @@ every column is derived from the same record in the same statement.
 import fcntl
 import json
 import os
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
@@ -206,12 +208,7 @@ class Store:
                 f"No exchange store at {path}; initialise one with "
                 "`python -m virtual_exchange.admin init-store`"
             )
-        lock = os.open(Path(directory) / LOCK_FILENAME, os.O_RDWR | os.O_CREAT, 0o600)
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(lock)
-            raise StoreError(f"Another exchange process is using {path}") from None
+        lock = cls._take_lock(Path(directory))
         try:
             connection = sqlite3.connect(
                 f"{path.resolve().as_uri()}?mode=rw",
@@ -234,6 +231,95 @@ class Store:
             os.close(lock)
             raise
         return cls(connection, lock)
+
+    @classmethod
+    def backup(cls, directory: str | Path, destination: str | Path) -> None:
+        """Copy one committed state while the exchange keeps trading.
+
+        VACUUM INTO reads a single consistent snapshot; in WAL mode a reader
+        never blocks the writer. The destination must not exist.
+        """
+        destination = Path(destination)
+        if destination.exists():
+            raise StoreError(f"Backup destination {destination} already exists")
+        connection = cls._read_only(cls.path(directory))
+        try:
+            connection.execute("VACUUM INTO ?", (str(destination),))
+        finally:
+            connection.close()
+
+    @classmethod
+    def restore(cls, directory: str | Path, source: str | Path) -> None:
+        """Replace the store with a backup while no exchange is running.
+
+        Taking the single-writer lock proves the exchange is stopped. The stale
+        WAL is removed with the old file, so it can never replay onto the copy.
+        """
+        source = Path(source)
+        check = cls._read_only(source)
+        try:
+            (result,) = check.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            check.close()
+        if result != "ok":
+            raise StoreError(f"Backup {source} failed its integrity check")
+        directory = Path(directory)
+        lock = cls._take_lock(directory)
+        copy = None
+        try:
+            with (
+                source.open("rb") as reader,
+                tempfile.NamedTemporaryFile(
+                    dir=directory, prefix=".restore-", delete=False
+                ) as writer,
+            ):
+                copy = Path(writer.name)
+                shutil.copyfileobj(reader, writer)
+                writer.flush()
+                os.fsync(writer.fileno())
+            target = cls.path(directory)
+            for suffix in ("-wal", "-shm"):
+                Path(f"{target}{suffix}").unlink(missing_ok=True)
+            os.replace(copy, target)
+            descriptor = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        except BaseException:
+            if copy is not None:
+                copy.unlink(missing_ok=True)
+            raise
+        finally:
+            os.close(lock)
+
+    @staticmethod
+    def _read_only(path: Path) -> sqlite3.Connection:
+        if not path.is_file():
+            raise StoreError(f"No exchange store at {path}")
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+        except sqlite3.DatabaseError:
+            version = None
+        if version != SCHEMA_VERSION:
+            connection.close()
+            raise StoreError(
+                f"{path} is not an exchange store of version {SCHEMA_VERSION}"
+            )
+        return connection
+
+    @staticmethod
+    def _take_lock(directory: Path) -> int:
+        lock = os.open(directory / LOCK_FILENAME, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(lock)
+            raise StoreError(
+                f"Another exchange process is using {directory / FILENAME}"
+            ) from None
+        return lock
 
     @classmethod
     def memory(cls) -> Store:
@@ -403,6 +489,16 @@ class Store:
                 "UPDATE accounts SET cash = ?, asset = ? WHERE account_id = ?",
                 [(cash, asset, account) for account, (cash, asset) in balances.items()],
             )
+
+    def prune(self, *, before: float, limit: int) -> int:
+        """Delete up to limit zero-fill terminal orders finished before a time."""
+        with self._transaction() as db:
+            return db.execute(
+                "DELETE FROM orders WHERE order_id IN (SELECT order_id FROM orders "
+                "WHERE terminal_at IS NOT NULL AND filled = 0 AND terminal_at < ? "
+                "LIMIT ?)",
+                (before, limit),
+            ).rowcount
 
     def append_news(self, seq: int, item: NewsItem) -> None:
         with self._transaction() as db:

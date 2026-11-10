@@ -125,8 +125,10 @@ PORT=18000 WEBSITE_BACKEND_PORT=18001 docker compose up --build --wait
 Compose builds exchange/ and website/backend/, publishing both to host loopback
 on ports 8000 and 8001 by default. Each API listens on all interfaces inside
 its container, runs as an unprivileged user, installs locked runtime dependencies,
-and has an HTTP healthcheck. The default stack has no volumes, credentials, or
-databases. Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
+and has an HTTP healthcheck. The default stack has no credentials or trading
+configuration. The API mounts the named volume `exchange-state` at
+`/var/lib/virtual-exchange` (`EXCHANGE_STATE_DIR`) and restarts unless stopped.
+Store initialisation, backup and restore are in [persistence](/persistence.md). Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
 Neither health endpoint depends on the other service. Build needs
 network access to registries and package sources; runtime needs no external
 service. This is local scaffolding, not production deployment configuration.
