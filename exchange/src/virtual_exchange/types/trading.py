@@ -27,6 +27,13 @@ class TimeInForce(StrEnum):
     IOC = "IOC"  # immediate or cancel: the remainder is cancelled at once
 
 
+class Funding(StrEnum):
+    """Operator-assigned funding policy for one account."""
+
+    FUNDED = "funded"  # orders need available balances and place holds
+    UNLIMITED = "unlimited"  # never limited by funds; balances may go negative
+
+
 class OrderStatus(StrEnum):
     """Describe the current lifecycle state of an accepted order."""
 

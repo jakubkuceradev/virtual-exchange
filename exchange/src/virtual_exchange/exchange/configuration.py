@@ -4,7 +4,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from virtual_exchange.types import Instrument
+from virtual_exchange.types import Funding, Instrument
 
 
 class TradingConfigurationError(ValueError):
@@ -22,7 +22,7 @@ def _unique(pairs):
 
 def load_config(
     path: str | Path,
-) -> tuple[Instrument, dict[str, tuple[Decimal, Decimal]]]:
+) -> tuple[Instrument, dict[str, tuple[Decimal, Decimal]], dict[str, Funding]]:
     try:
         config = json.loads(
             Path(path).read_text(encoding="utf-8"), object_pairs_hook=_unique
@@ -58,16 +58,19 @@ def load_config(
         if not isinstance(config["accounts"], dict):
             raise ValueError
         allocations = {}
+        funding = {}
         for account, values in config["accounts"].items():
             if (
                 not account
                 or not isinstance(values, dict)
-                or set(values) != {"cash", "asset"}
+                or not {"cash", "asset"} <= set(values) <= {"cash", "asset", "funding"}
                 or any(not isinstance(v, str) for v in values.values())
             ):
                 raise ValueError
             allocations[account] = Decimal(values["cash"]), Decimal(values["asset"])
-        return instrument, allocations
+            # An omitted policy is funded; unknown values raise ValueError.
+            funding[account] = Funding(values.get("funding", Funding.FUNDED))
+        return instrument, allocations, funding
     except (
         OSError,
         UnicodeError,

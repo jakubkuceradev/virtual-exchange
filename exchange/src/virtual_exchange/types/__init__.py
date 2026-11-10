@@ -23,6 +23,7 @@ from virtual_exchange.types.operations import (
 from virtual_exchange.types.trading import (
     Balance,
     Fill,
+    Funding,
     Instrument,
     Liquidity,
     OrderSide,
@@ -42,6 +43,7 @@ __all__ = [
     "BookLevel",
     "Execution",
     "Fill",
+    "Funding",
     "Instrument",
     "Liquidity",
     "MatchingResult",

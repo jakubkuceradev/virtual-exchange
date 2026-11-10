@@ -1,17 +1,21 @@
 """Verify features automated traders need: maker side, IOC and unlimited funding."""
 
 import hashlib
+import json
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
+from virtual_exchange.amounts import OrderRejected
 from virtual_exchange.api import create_app
 from virtual_exchange.auth import Authenticator
 from virtual_exchange.exchange import Exchange
+from virtual_exchange.exchange.configuration import TradingConfigurationError
 from virtual_exchange.exchange.ledger import InsufficientFunds
 from virtual_exchange.types import (
     AuthenticatedIdentity,
+    Funding,
     Instrument,
     LimitOrder,
     OrderSide,
@@ -69,8 +73,14 @@ async def totals(exchange):
 
 
 @pytest.fixture
-def exchange():
-    return make_exchange()
+def exchange(request):
+    # Parametrize indirectly with a funding mapping to assign account policies.
+    return make_exchange(funding=getattr(request, "param", None))
+
+
+UNLIMITED_CAROL = pytest.mark.parametrize(
+    "exchange", [{"carol": Funding.UNLIMITED}], indirect=True
+)
 
 
 @pytest.fixture
@@ -272,3 +282,145 @@ def test_websocket_observers_never_see_the_ioc_remainder(api):
         book = socket.receive_json()
         assert book["channel"] == "book"
         assert book["payload"] == [{"side": "buy", "price": "90.00", "quantity": "1.0"}]
+
+
+# Operator-configured unlimited funding (criteria 5-7).
+
+
+@UNLIMITED_CAROL
+@pytest.mark.anyio
+async def test_unlimited_account_trades_past_zero_and_conserves_totals(exchange):
+    before = await totals(exchange)
+    # Carol starts with nothing yet rests a bid far beyond any balance.
+    bid = await submit(exchange, "carol", "buy", "1000", "100")
+    assert bid.status == OrderStatus.OPEN
+    assert await holdings(exchange, "carol") == {
+        "USD": (D(-100000), D(100000)),
+        "ABC": (D(0), D(0)),
+    }
+    # Funded Bob follows normal rules against her: he cannot oversell.
+    with pytest.raises(InsufficientFunds):
+        await submit(exchange, "bob", "sell", "11", "100")
+    await submit(exchange, "bob", "sell", "10", "100")
+    await exchange.cancel_order(identity=identity("carol"), order_id=bid.order_id)
+    # Selling inventory she does not have takes her asset negative.
+    await submit(exchange, "alice", "buy", "20", "50")
+    await submit(exchange, "carol", "sell", "30", "50", TimeInForce.IOC)
+    assert await holdings(exchange, "carol") == {
+        "USD": (D(0), D(0)),
+        "ABC": (D(-10), D(0)),
+    }
+    assert await holdings(exchange, "bob") == {
+        "USD": (D(1000), D(0)),
+        "ABC": (D(0), D(0)),
+    }
+    assert await holdings(exchange, "alice") == {
+        "USD": (D(0), D(0)),
+        "ABC": (D(20), D(0)),
+    }
+    assert await totals(exchange) == before
+
+
+@UNLIMITED_CAROL
+@pytest.mark.anyio
+async def test_unlimited_account_keeps_validation_and_self_trade_rules(exchange):
+    with pytest.raises(OrderRejected):
+        await submit(exchange, "carol", "buy", "1.05", "100")
+    await submit(exchange, "carol", "sell", "2", "100")
+    order = await submit(exchange, "carol", "buy", "2", "100")
+    assert (order.status, order.prevented_quantity) == (OrderStatus.CANCELLED, D(2))
+    assert await holdings(exchange, "carol") == {
+        "USD": (D(0), D(0)),
+        "ABC": (D(0), D(0)),
+    }
+    assert not (await exchange.list_trades())["data"]
+
+
+@UNLIMITED_CAROL
+def test_negative_balances_over_rest_and_funded_rejection(api):
+    post(api, "sell", "bob", quantity="3")
+    assert post(api, "buy", "carol", quantity="5").status_code == 201
+    assert balances(api, "carol") == {
+        "USD": ("-500.000", "200.000"),
+        "ABC": ("3.0", "0.0"),
+    }
+    post(api, "buy", "alice", price="90", quantity="1")
+    assert post(api, "sell", "carol", price="90", quantity="10").status_code == 201
+    # Self-trade prevention removes 2 against her own bid, 1 fills, 7 rest.
+    assert balances(api, "carol")["ABC"] == ("-5.0", "7.0")
+    refused = post(api, "buy", "bob", price="1000")
+    assert (refused.status_code, refused.json()) == (
+        409,
+        {"error": "insufficient_funds"},
+    )
+
+
+@pytest.mark.parametrize(
+    "funding",
+    [{"dave": Funding.UNLIMITED}, {"carol": "unlimited"}, {"carol": None}],
+)
+def test_funding_must_assign_policies_to_allocated_accounts(funding):
+    with pytest.raises(OrderRejected):
+        make_exchange(funding=funding)
+
+
+def write_config(path, accounts):
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "instrument": {
+                    "instrument_id": "ABC-USD",
+                    "base_asset": "ABC",
+                    "quote_asset": "USD",
+                    "price_increment": "0.01",
+                    "quantity_increment": "0.1",
+                },
+                "accounts": accounts,
+            }
+        )
+    )
+    return path
+
+
+@pytest.mark.anyio
+async def test_configured_funding_survives_restart(tmp_path):
+    path = write_config(
+        tmp_path / "trading.json",
+        {
+            "alice": {"cash": "1000", "asset": "0"},
+            "bob": {"cash": "0", "asset": "10", "funding": "funded"},
+            "carol": {"cash": "5", "asset": "1", "funding": "unlimited"},
+        },
+    )
+    for _ in range(2):
+        exchange = Exchange.from_config(path=path)
+        assert await holdings(exchange, "carol") == {
+            "USD": (D(5), D(0)),
+            "ABC": (D(1), D(0)),
+        }
+        await submit(exchange, "carol", "buy", "100", "100")
+        with pytest.raises(InsufficientFunds):
+            await submit(exchange, "bob", "sell", "11", "100")
+        with pytest.raises(InsufficientFunds):
+            await submit(exchange, "alice", "buy", "11", "100")
+
+
+@pytest.mark.parametrize(
+    "account",
+    [
+        {"cash": "1", "asset": "0", "funding": "infinite"},
+        {"cash": "1", "asset": "0", "funding": "UNLIMITED"},
+        {"cash": "1", "asset": "0", "funding": True},
+        {"cash": "1", "asset": "0", "funding": None},
+        {"cash": "1", "funding": "unlimited"},
+        {"cash": "-1", "asset": "0", "funding": "unlimited"},
+        {"cash": "1", "asset": "0", "funding": "unlimited", "credit": "1"},
+    ],
+)
+def test_invalid_funding_configuration_is_sanitized(tmp_path, account):
+    path = write_config(tmp_path / "trading.json", {"carol": account})
+    with pytest.raises(
+        TradingConfigurationError, match="^Invalid trading configuration$"
+    ):
+        Exchange.from_config(path=path)
