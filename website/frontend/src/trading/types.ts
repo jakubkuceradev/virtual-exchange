@@ -78,6 +78,23 @@ export type MarketView = {
   historyNote: string;
 };
 
+/** A published market news item. Times are epoch milliseconds. */
+export type NewsItem = {
+  id: string;
+  headline: string;
+  body: string | null;
+  instrumentIds: readonly string[];
+  /** Announced future event, if any. */
+  eventAt: number | null;
+  publishedAt: number;
+};
+
+export type NewsView = {
+  status: 'connecting' | 'ready' | 'stale' | 'unavailable';
+  /** Newest first. */
+  items: readonly NewsItem[];
+};
+
 export type Holding = { total: Decimal; available: Decimal; reserved: Decimal };
 
 export type AccountView =
@@ -199,6 +216,8 @@ export type TradingSource = {
   kind: 'mock' | 'live';
   identity: Identity | null;
   market: MarketView;
+  /** Public news feed; independent of market and account readiness. */
+  news: NewsView;
   account: AccountView;
   trading: Trading;
   /** Null when the source has no credential entry (mock). */

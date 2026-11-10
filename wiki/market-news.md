@@ -46,6 +46,20 @@ deduplication. Publication creates no trading commit: the envelope `commit_id`
 is the latest trading commit, and trading sequences and order commit versions
 are unaffected.
 
+## Website
+
+The participant website has a public News view (signed-out visible, like
+market data): items newest first with publication time, instrument tags, body
+and, for `event_at` items, the local event time with a once-per-second
+countdown ("Event time passed" afterwards). A small badge on the News
+navigation entry counts items not yet displayed on the screen in this tab; the
+backlog at first load counts, opening the screen clears it, and the seen set is
+tab memory only. The live client uses its own `news` WebSocket next to the
+`book`/`trades` one, so feed recovery failures never mark the market stale; it
+recovers with the exact baseline/high-watermark rule above and clears the feed
+on an exchange restart. Code: `website/frontend/src/News.tsx`, `live/news.ts`;
+live acceptance in `e2e-live/news.spec.ts`.
+
 ## Implementation and verification
 
 `exchange/news.py` (`NewsLog`) owns validation and order; `Exchange.publish_news`

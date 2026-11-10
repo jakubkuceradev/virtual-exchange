@@ -28,6 +28,7 @@ if (!process.env.LIVE_DIR) {
     carol: ['carol', ['read', 'trade']],
     // The website backend's service identity: account listing only.
     observer: ['website', ['observe_accounts']],
+    publisher: ['newsdesk', ['publish_news']],
   };
   const tokens = Object.fromEntries(
     Object.keys(grants).map((name) => [

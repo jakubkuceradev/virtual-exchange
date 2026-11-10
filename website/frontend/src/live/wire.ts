@@ -5,7 +5,7 @@
  */
 import type { Decimal } from '../trading/decimal.ts';
 import { isCanonical } from '../trading/decimal.ts';
-import type { OrderStatus, Side } from '../trading/types.ts';
+import type { NewsItem, OrderStatus, Side } from '../trading/types.ts';
 
 export class WireError extends Error {}
 
@@ -141,6 +141,20 @@ export function trade(value: unknown): WireTrade {
     price: decimal(raw.price),
     quantity: decimal(raw.quantity),
     executedAt: time(raw.executed_at),
+  };
+}
+
+export function news(value: unknown): NewsItem {
+  const raw = object(value, 'news item');
+  return {
+    id: text(raw.news_id),
+    headline: text(raw.headline),
+    body: raw.body == null ? null : text(raw.body),
+    instrumentIds: list(raw.instrument_ids, 'instrument_ids').map((id) =>
+      text(id),
+    ),
+    eventAt: raw.event_at == null ? null : time(raw.event_at),
+    publishedAt: time(raw.published_at),
   };
 }
 

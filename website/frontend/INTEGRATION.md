@@ -37,10 +37,11 @@ for chart geometry and percentages.
 | [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root; the build mode (`--mode mock` or live) picks it and it never switches at runtime. |
 | [live/source.ts](src/live/source.ts) / `useLiveSource` | Live source over one `LiveSession` (same-origin `/exchange` proxy) and one `CompetitionFeed` (same-origin `/website` proxy to the website backend). |
 | [live/competition.ts](src/live/competition.ts) | Competition feed: polls the public leaderboard every 15 s and, while an identity is known, the caller's `/competition/me` (and their series every 10 minutes) with the in-memory token. Failure or standings older than 3 minutes give the unavailable state; late replies from an earlier token are dropped. |
-| [live/session.ts](src/live/session.ts) | Public (book, trades) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. |
+| [live/session.ts](src/live/session.ts) | Public (book, trades), public news (separate socket, so a news gap never marks the market stale) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. |
 | Commands (in [live/session.ts](src/live/session.ts)) | Submit/cancel over REST: increment validation, one UUIDv4 per deliberate action, busy/unresolved/rejected outcomes from stable codes, lookup by client ID after an ambiguous reply (never an automatic resubmit), dismissal only after a resync also misses it, cancel races resolved by reading the order, coalesced balance refresh. |
 | [live/protocol.ts](src/live/protocol.ts) | Frame assembler: subscription baselines, fragments, book snapshot brackets, per-channel sequences, heartbeat gap checks, process identity. |
 | [live/market.ts](src/live/market.ts), [live/account.ts](src/live/account.ts) | Pure reducers: book levels, deduplicated trades, candles/statistics from executions only; versioned orders, deduplicated fills, commit-ordered balances. |
+| [live/news.ts](src/live/news.ts) | Pure feed rules: the `GET /news` page at the subscription baseline plus buffered channel items above it, newest first, deduplicated by `news_id`. |
 | [live/rest.ts](src/live/rest.ts), [live/wire.ts](src/live/wire.ts) | REST client with outcome classification and cursor paging; wire decoders. |
 
 ## Views and components
@@ -50,6 +51,7 @@ for chart geometry and percentages.
 | `App` / `Dashboard` | Header identity, navigation, focus | — |
 | `Overview` | Available/reserved cash, holdings, market card; valuation, profit, performance chart, rank and nearby standings (website backend) | Holdings-card valuation note (mock only) |
 | `Trade`, `OrderTicket`, `BookRows`, `OrderRows`, `FillRows` | Everything: instrument units, statistics, candles, book, balances, orders, fills, commands, disabled states | — |
+| `News` | Everything: items newest first, tags, body, event time and countdown, feed status; unread count in `Dashboard` | — (the mock source supplies sample items) |
 | `CandleChart` | Candles with computed scales and labels | — |
 | `PerformanceChart` | Live series with computed scale and dates | Fixed sample scale and labels (mock) |
 | `Leaderboard`, `Nearby`, `RankingRows` | Public standings; the caller's rank, return and neighbourhood when signed in; unranked reasons; unavailable state | — |
