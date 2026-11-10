@@ -397,7 +397,7 @@ async def test_failed_write_stops_trading_and_commits_nothing(state_dir):
     exchange.close()
 
 
-# ---- Retention ----
+# ---- Retention, backup and restore (operations) ----
 
 
 @pytest.mark.anyio
@@ -450,3 +450,55 @@ async def test_retention_prunes_only_old_zero_fill_terminal_orders(
     # A pruned order's client ID is no longer reserved.
     await exchange.submit_order(identity=alice, order=buy("90", client=cancelled[0][0]))
     exchange.close()
+
+
+@pytest.mark.anyio
+async def test_backup_under_load_restores_a_committed_state(tmp_path):
+    """AC6: backups taken while commands run restore to a committed prefix."""
+    live = tmp_path / "live"
+    live.mkdir()
+    Store.create(live)
+    child = start(live, "--seed", "7", "--operations", "3000")
+    acks, backups = [], []
+    for line in child.stdout:
+        kind, rest = parse(line)
+        if kind == "observed":
+            break
+        acks.append((rest[0], rest[1:]))
+        if len(acks) % 400 == 0:
+            destination = tmp_path / f"backup-{len(backups)}.sqlite3"
+            assert (
+                admin(["--state-dir", str(live), "backup-store", str(destination)]) == 0
+            )
+            backups.append((destination, len(acks)))
+    child.send_signal(signal.SIGKILL)
+    child.wait()
+    assert len(backups) >= 3
+    commits = []
+    for index, (backup, acknowledged) in enumerate(backups):
+        restored = tmp_path / f"restored-{index}"
+        restored.mkdir()
+        assert admin(["--state-dir", str(restored), "restore-store", str(backup)]) == 0
+        state = await verify(restored, acks[:acknowledged])
+        commits.append(state["commit_id"])
+    assert commits == sorted(commits)
+
+
+def test_restore_refuses_running_exchange_and_bad_backups(state_dir, tmp_path, capsys):
+    backup = tmp_path / "backup.sqlite3"
+    Store.backup(state_dir, backup)
+    with pytest.raises(StoreError, match="already exists"):
+        Store.backup(state_dir, backup)
+    running = Store.open(state_dir)
+    with pytest.raises(StoreError, match="Another exchange process"):
+        Store.restore(state_dir, backup)
+    running.close()
+    garbage = tmp_path / "garbage.sqlite3"
+    garbage.write_bytes(b"not a database")
+    assert admin(["--state-dir", str(state_dir), "restore-store", str(garbage)]) == 1
+    assert capsys.readouterr().err
+    # A stale WAL never survives a restore.
+    Path(f"{Store.path(state_dir)}-wal").write_bytes(b"stale")
+    Store.restore(state_dir, backup)
+    assert not Path(f"{Store.path(state_dir)}-wal").exists()
+    Store.open(state_dir).close()
