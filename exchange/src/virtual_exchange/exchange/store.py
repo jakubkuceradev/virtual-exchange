@@ -13,7 +13,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -33,7 +33,7 @@ from virtual_exchange.types import (
 
 FILENAME = "exchange.sqlite3"
 LOCK_FILENAME = "exchange.lock"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _TERMINAL = frozenset({OrderStatus.FILLED, OrderStatus.CANCELLED})
 
 _SCHEMA = f"""
@@ -49,6 +49,7 @@ CREATE TABLE accounts (
     cash INTEGER NOT NULL,
     asset INTEGER NOT NULL,
     funding TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     order_count INTEGER NOT NULL DEFAULT 0,
     fill_count INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
@@ -93,7 +94,7 @@ class Recovered:
     """Everything memory needs after startup; history stays in the store."""
 
     commit_id: int
-    accounts: dict[str, tuple[int, int, Funding]]
+    accounts: dict[str, tuple[int, int, Funding, datetime]]
     open_orders: tuple[OrderSnapshot, ...]
     trades: int
     news: int
@@ -273,7 +274,8 @@ class Store:
 
         An empty store records the instrument and every account. Later starts
         keep persisted balances, add only new accounts and refuse a changed
-        instrument or a changed funding policy for an existing account.
+        instrument or a changed funding policy for an existing account. An
+        account's creation time is when this call first records it.
         """
         with self._transaction() as db:
             (stored,) = db.execute("SELECT instrument FROM state").fetchone()
@@ -299,11 +301,12 @@ class Store:
                         f"funding for account {account!r} changed from "
                         f"{funding[account]} to {policy}"
                     )
+            created_at = datetime.now(UTC).isoformat()
             db.executemany(
-                "INSERT INTO accounts (account_id, cash, asset, funding) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO accounts (account_id, cash, asset, funding, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
                 [
-                    (account, cash, asset, str(policy))
+                    (account, cash, asset, str(policy), created_at)
                     for account, (cash, asset, policy) in accounts.items()
                     if account not in funding
                 ],
@@ -316,9 +319,14 @@ class Store:
         return Recovered(
             commit_id,
             {
-                account: (cash, asset, Funding(funding))
-                for account, cash, asset, funding in db.execute(
-                    "SELECT account_id, cash, asset, funding FROM accounts"
+                account: (
+                    cash,
+                    asset,
+                    Funding(funding),
+                    datetime.fromisoformat(created),
+                )
+                for account, cash, asset, funding, created in db.execute(
+                    "SELECT account_id, cash, asset, funding, created_at FROM accounts"
                 )
             },
             tuple(

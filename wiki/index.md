@@ -8,7 +8,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 
 ## Project knowledge
 
-- [Funded trading](/trading-slice.md) — Funded REST trading, live observations, recovery, and restart rules.
+- [Funded trading](/trading-slice.md) — Funded REST trading, account observations, live observations, recovery, and restart rules.
 - [Persistence](/persistence.md) — Durable SQLite commits, crash recovery, configuration-versus-store rules, and store lifecycle.
 - [Market news](/market-news.md) — Published news items, publish_news grant, list and channel recovery.
 - [Authentication](/authentication.md) — Configured bearer tokens, identity endpoint, grants, and restart lifecycle.

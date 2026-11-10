@@ -64,6 +64,21 @@ class Balance:
 
 
 @dataclass(frozen=True, slots=True)
+class AccountObservation:
+    """Report one account's funding policy, creation time and total balances.
+
+    Totals include reserved amounts; cash is in the quote asset and asset in the
+    base asset of the exchange's instrument. Unlimited accounts may be negative.
+    """
+
+    account_id: str
+    funding: Funding
+    created_at: datetime
+    cash: Decimal
+    asset: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class OrderSnapshot:
     """Capture original quantity, distinct executed/open/removed quantities, and state."""
 

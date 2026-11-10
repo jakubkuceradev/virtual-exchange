@@ -36,6 +36,10 @@ so memory follows open orders and accounts, not history length, and history
 pages cost O(page size). `MatchingEngine` keeps only open orders and an
 execution counter; callers record history from each `MatchingResult`.
 
+Each account row also records `created_at`, set once when the store first
+records the account and published by `GET /accounts`. Schema version 2 added
+it; version 1 stores are refused, without migration, since none was deployed.
+
 Rows store the full public record as a JSON body plus the columns used for
 lookup, ordering, uniqueness and pruning, all derived from the same record in
 the same statement. Balances are integer columns; holds are never stored.

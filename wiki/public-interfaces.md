@@ -35,8 +35,8 @@ for the complete contracts, configuration, permissions and recovery.
 | Module | Implemented contract |
 | --- | --- |
 | virtual_exchange.api | create_app(authenticator=..., exchange=...); health, identity, funded REST and /ws observations |
-| virtual_exchange.auth | Authenticator authenticates opaque tokens; require_permission enforces independent read/trade/publish_news grants |
-| virtual_exchange.exchange | Exchange instance exposes complete funded submit/cancel and consistent account/public queries |
+| virtual_exchange.auth | Authenticator authenticates opaque tokens; require_permission enforces independent read/trade/publish_news/observe_accounts grants |
+| virtual_exchange.exchange | Exchange instance exposes complete funded submit/cancel, consistent account/public queries and the observe_accounts listing |
 | virtual_exchange.exchange.matching | Balance-independent single-instrument sequential matching; not an unfunded participant API |
 | virtual_exchange.exchange.news | NewsLog validates and orders immutable news; Exchange.publish_news/list_news serialize and deliver it |
 | virtual_exchange.trading_api, news_api, stream_api | Transport parsing, serialization and error mapping; no private reserve/match/settle coordination |
