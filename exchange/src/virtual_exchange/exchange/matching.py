@@ -1,7 +1,6 @@
 """Sequential single-instrument matching, independent of funding and transport."""
 
-from collections import ChainMap
-from collections.abc import MutableMapping
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -35,38 +34,64 @@ class OrderNotFound(KeyError):
 
 
 class MatchingEngine:
-    """Own a complete in-memory book; callers supply eligible orders sequentially."""
+    """Own the live book only; callers supply eligible orders sequentially.
 
-    def __init__(self, *, instrument: Instrument) -> None:
-        Amounts(instrument)
+    Terminal orders and executions leave the engine as soon as a command
+    returns them, so memory depends on open orders, not on history. Callers
+    that need history record it from each MatchingResult.
+    """
+
+    def __init__(
+        self,
+        *,
+        instrument: Instrument,
+        open_orders: Iterable[OrderSnapshot] = (),
+        sequence: int = 0,
+        executions: int = 0,
+    ) -> None:
+        """Start empty, or restore a book from open orders in priority order."""
+        amounts = Amounts(instrument)
         self._instrument = instrument
-        self._orders: MutableMapping[str, OrderSnapshot] = {}
+        # Open orders only; every key is also in _resting.
+        self._orders: dict[str, OrderSnapshot] = {}
         # Insertion order is engine receipt order. Updating retains that priority.
         self._resting: dict[str, tuple[int, int]] = {}
         # Aggregate open lots per (side, price ticks), maintained incrementally.
         self._levels: dict[tuple[OrderSide, int], int] = {}
-        self._executions: list[Execution] = []
-        self._sequence = 0
-        # A candidate reads its parent's retained history without copying it.
+        for order in open_orders:
+            ticks = _units(order.limit_price, instrument.price_increment)
+            lots = _units(order.remaining_quantity, instrument.quantity_increment)
+            if (
+                order.order_id in self._orders
+                or order.status not in (OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED)
+                or lots <= 0
+            ):
+                raise ValueError("restored orders must be distinct and open")
+            amounts.order(
+                side=order.side, price=order.limit_price, quantity=order.quantity
+            )
+            self._orders[order.order_id] = order
+            self._resting[order.order_id] = (ticks, lots)
+            self._adjust_level(order.side, ticks, lots)
+        self._executions = executions
+        self._sequence = sequence
         self._parent: MatchingEngine | None = None
-        self._execution_offset = 0
-        self._base_sequence = 0
+        self._base_sequence = sequence
         self._spent = False
 
     def fork(self) -> MatchingEngine:
         """Start a private candidate for a coordinated trading operation.
 
-        Retained history is overlaid rather than copied, so the cost is
-        proportional to open orders and price levels, not process lifetime.
+        The cost is proportional to open orders and price levels.
         """
         if self._parent is not None or self._spent:
             raise RuntimeError("a candidate cannot be forked")
         candidate = MatchingEngine(instrument=self._instrument)
         candidate._parent = self
-        candidate._orders = ChainMap({}, self._orders)
+        candidate._orders = self._orders.copy()
         candidate._resting = self._resting.copy()
         candidate._levels = self._levels.copy()
-        candidate._execution_offset = len(self._executions)
+        candidate._executions = self._executions
         candidate._base_sequence = candidate._sequence = self._sequence
         return candidate
 
@@ -76,11 +101,10 @@ class MatchingEngine:
         # sequence proves no other candidate committed after this fork.
         if candidate._parent is not self or candidate._base_sequence != self._sequence:
             raise RuntimeError("candidate does not extend this engine")
-        assert isinstance(candidate._orders, ChainMap)
-        self._orders.update(candidate._orders.maps[0])
+        self._orders = candidate._orders
         self._resting = candidate._resting
         self._levels = candidate._levels
-        self._executions.extend(candidate._executions)
+        self._executions = candidate._executions
         self._sequence = candidate._sequence
         candidate._parent = None
         candidate._spent = True
@@ -181,23 +205,19 @@ class MatchingEngine:
                 filled=maker_filled,
                 prevented=maker_prevented,
             )
-            self._orders[maker_id] = maker
             changed.append(maker)
             if maker_remaining:
+                self._orders[maker_id] = maker
                 self._resting[maker_id] = (maker_ticks, maker_remaining)
             else:
+                del self._orders[maker_id]
                 del self._resting[maker_id]
             self._adjust_level(maker_side, maker_ticks, -removed)
             if is_self_trade:
                 continue
             executions.append(
                 Execution(
-                    execution_id=str(
-                        self._execution_offset
-                        + len(self._executions)
-                        + len(executions)
-                        + 1
-                    ),
+                    execution_id=str(self._executions + len(executions) + 1),
                     instrument_id=self._instrument.instrument_id,
                     maker_order_id=maker_id,
                     taker_order_id=order_id,
@@ -220,19 +240,17 @@ class MatchingEngine:
                 ),
             )
             remaining = 0
-        self._orders[order_id] = order
         if remaining:
+            self._orders[order_id] = order
             self._resting[order_id] = (ticks, remaining)
             self._adjust_level(side, ticks, remaining)
-        self._executions.extend(executions)
+        self._executions += len(executions)
         self._sequence += 1
         return MatchingResult(order, tuple(changed), tuple(executions))
 
     def cancel(self, *, order_id: str) -> MatchingResult:
-        """Cancel an open remainder; reject unknown or terminal orders unchanged."""
+        """Cancel an open remainder; unknown or finished orders raise OrderNotFound."""
         order = self.get_order(order_id=order_id)
-        if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED):
-            raise OrderRejected("order is already finished")
         ticks, remaining = self._resting.pop(order_id)
         self._adjust_level(order.side, ticks, -remaining)
         order = replace(
@@ -241,7 +259,7 @@ class MatchingEngine:
             remaining_quantity=_decimal(0, self._instrument.quantity_increment),
             cancelled_quantity=_decimal(remaining, self._instrument.quantity_increment),
         )
-        self._orders[order_id] = order
+        del self._orders[order_id]
         self._sequence += 1
         return MatchingResult(order)
 
@@ -268,7 +286,7 @@ class MatchingEngine:
         )
 
     def get_order(self, *, order_id: str) -> OrderSnapshot:
-        """Return an immutable accepted order, including terminal orders."""
+        """Return an open order; finished and unknown orders raise OrderNotFound."""
         self._validate_id(order_id, "order_id")
         try:
             return self._orders[order_id]
@@ -310,18 +328,9 @@ class MatchingEngine:
             self._levels.get((side, ticks), 0), self._instrument.quantity_increment
         )
 
-    def list_executions(
-        self, *, start: int = 0, stop: int | None = None
-    ) -> tuple[Execution, ...]:
-        """Return immutable execution history in matching order, optionally sliced."""
-        history = self._executions
-        if self._parent is not None:
-            history = [*self._parent._executions, *self._executions]
-        return tuple(history[start:stop])
-
     def count_executions(self) -> int:
-        """Return the number of executions retained by this instance."""
-        return self._execution_offset + len(self._executions)
+        """Return how many executions this book has produced; IDs continue from it."""
+        return self._executions
 
     @staticmethod
     def _validate_id(value: str, name: str) -> None:

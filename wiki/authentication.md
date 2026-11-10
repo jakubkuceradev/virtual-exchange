@@ -6,7 +6,8 @@ title: Exchange Authentication
 # Exchange authentication
 
 The exchange resolves operator-provisioned opaque bearer tokens to trusted account
-IDs and independent `read`, `trade` and `publish_news` grants ([market news](/market-news.md)). Authentication owns no balances, bot
+IDs and independent `read`, `trade`, `publish_news` ([market news](/market-news.md)) and
+`observe_accounts` ([account observations](/trading-slice.md#account-observations)) grants. Authentication owns no balances, bot
 funding, or matching policy. Registration, browser sessions, email delivery,
 automatic expiry, and live credential management are deferred.
 
@@ -69,7 +70,7 @@ health works, all private authentication fails, and no default token is created.
 The app loads once at construction. File changes/removal leave an existing app
 unchanged; new instances load the new configuration. Removing one token leaves
 other tokens for that account independent. Unchanged config survives restart,
-even though matching state currently resets. Keep files outside checkouts with
+as does trading state, which persists separately. Keep files outside checkouts with
 restricted operator access; never commit them, put raw tokens in URLs, log
 Authorization headers, or bake credentials into images. Use HTTPS for deployment;
 loopback HTTP is suitable for local development. Configure reverse-proxy and

@@ -279,7 +279,7 @@ def test_news_requires_configured_exchange():
 
 
 @pytest.mark.anyio
-async def test_in_process_rules_and_restart(exchange):
+async def test_in_process_rules_and_new_store(exchange):
     with pytest.raises(PermissionDenied):
         await exchange.publish_news(
             identity=AuthenticatedIdentity("alice", frozenset({Permission.READ})),
@@ -303,7 +303,7 @@ async def test_in_process_rules_and_restart(exchange):
 
     await exchange.publish_news(identity=PUBLISHER, draft=NewsDraft("again"))
     cursor = (await exchange.list_news(limit=1))["next_cursor"]
-    restarted = new_exchange()
+    restarted = new_exchange()  # a new empty store
     assert (await restarted.list_news())["data"] == ()
     with pytest.raises(TradingError, match="invalid_cursor"):
         await restarted.list_news(cursor=cursor)

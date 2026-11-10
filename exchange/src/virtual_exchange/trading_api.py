@@ -4,7 +4,7 @@ import re
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr, ValidationError
@@ -58,6 +58,9 @@ def register_trading(
     authenticated = identity_dependency(authenticator)
     reader = permission_dependency(identity=authenticated, permission=Permission.READ)
     trader = permission_dependency(identity=authenticated, permission=Permission.TRADE)
+    observer = permission_dependency(
+        identity=authenticated, permission=Permission.OBSERVE_ACCOUNTS
+    )
 
     def service() -> Exchange:
         if exchange is None:
@@ -144,6 +147,20 @@ def register_trading(
             "process_id": ex.process_id,
             "commit_id": commit_id,
             "data": wire(balances),
+        }
+
+    @app.get("/accounts")
+    async def accounts(
+        response: Response,
+        caller: Annotated[AuthenticatedIdentity, Depends(observer)],
+    ):
+        ex = service()
+        commit_id, accounts = await ex.list_accounts(identity=caller)
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "process_id": ex.process_id,
+            "commit_id": commit_id,
+            "data": wire(accounts),
         }
 
     @app.get("/account/snapshot")

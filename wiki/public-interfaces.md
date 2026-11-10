@@ -16,7 +16,7 @@ open. Both the exchange and website backend factories and health routes work.
 
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
-website/backend/      Independent health-only API; competition still planned
+website/backend/      Independent API: health and the competition service
 website/frontend/     Four-view React preview and approved HTML design reference
 ```
 
@@ -55,8 +55,8 @@ for the complete contracts, configuration, permissions and recovery.
 | Module | Implemented contract |
 | --- | --- |
 | virtual_exchange.api | create_app(authenticator=..., exchange=...); health, identity, funded REST and /ws observations |
-| virtual_exchange.auth | Authenticator authenticates opaque tokens; require_permission enforces independent read/trade/publish_news grants |
-| virtual_exchange.exchange | Exchange instance exposes complete funded submit/cancel and consistent account/public queries |
+| virtual_exchange.auth | Authenticator authenticates opaque tokens; require_permission enforces independent read/trade/publish_news/observe_accounts grants |
+| virtual_exchange.exchange | Exchange instance exposes complete funded submit/cancel, consistent account/public queries and the observe_accounts listing |
 | virtual_exchange.exchange.matching | Balance-independent single-instrument sequential matching; not an unfunded participant API |
 | virtual_exchange.exchange.news | NewsLog validates and orders immutable news; Exchange.publish_news/list_news serialize and deliver it |
 | virtual_exchange.trading_api, news_api, stream_api | Transport parsing, serialization and error mapping; no private reserve/match/settle coordination |
@@ -83,14 +83,13 @@ conversion owner; balances and private observations are not public payloads.
 
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
-| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
+| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings, implemented from `GET /accounts` and public market data ([competition](/competition.md)). |
 | Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state; website-backend responses for competition data (planned) | Four React/headless Mantine views over one data source: live exchange (default) or the fixture demo (`--mode mock`); independent approved HTML reference. |
 
 The website backend distinguishes public market feeds from authorized account
-balances, orders, and fills. Ranking calculations may need historical account
-observations; their retention, access policy, and recovery/export contracts need
-agreement in a later data slice. Exchange publishes facts, not competition
-scores or calendar baselines. Accounts continue without resets.
+balances, orders, and fills. Rankings use the exchange's `observe_accounts`
+listing and keep their own observations in the backend's store. Exchange
+publishes facts, not competition scores or calendar baselines. Accounts continue without resets.
 
 ## Intended flow
 

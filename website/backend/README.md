@@ -1,7 +1,9 @@
 # Website backend
 
-Independent FastAPI example. Only `GET /health` is implemented; competition,
-valuation, and rankings remain planned. It starts without the exchange.
+Independent FastAPI app: `GET /health` and the competition service (valuation,
+baselines and rankings from the exchange's published API). It starts without
+the exchange; competition routes need `WEBSITE_STATE_DIR` and an observer token,
+described in [development setup](../../wiki/development.md#competition-service).
 
 From the repository root:
 
