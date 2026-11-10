@@ -8,8 +8,9 @@ title: Funded Trading Slice
 `virtual_exchange.exchange.Exchange` owns complete funded operations for one
 instrument. An app-owned instance combines a balance-independent matching engine
 with operator allocations, reservations, immediate fee-free settlement, and
-private queries. Bots use ordinary funded accounts. Persistence, deposits,
-withdrawals, margin, shorting, and unlimited bot funding are deferred.
+private queries. Bots are ordinary API clients; the operator may assign an
+account unlimited funding (below). Persistence, deposits, withdrawals, margin,
+and shorting for funded accounts are deferred.
 
 ## Financial and consistency contract
 
@@ -47,6 +48,31 @@ following Coinbase's fill liquidity indicator. No durability or multi-worker con
 promised. Restart restores configured allocations, new process identity, and no
 orders, fills, or holds; token configuration is independent.
 
+## Time in force
+
+Orders take `time_in_force`, following Coinbase: `GTC` (default) rests any
+unfilled remainder; `IOC` matches like a limit order at its limit price and the
+engine cancels the remainder at once, so it never rests or reaches the book.
+An IOC ends `filled`, or `cancelled` with `filled_quantity` and
+`cancelled_quantity` giving the split (an IOC that fills nothing is accepted and
+cancelled, not rejected). It reserves the full limit cost like GTC, so a funded
+IOC can still fail with `insufficient_funds`; derived holds release the rest in
+the same command. Self-trade prevention is unchanged. Order snapshots report
+`time_in_force`. GTT and FOK are not supported.
+
+## Unlimited funding
+
+Funding policy is per account and set only by operator configuration: `funded`
+(default) or `unlimited`. The ledger owns the policy. Unlimited accounts are
+never rejected for insufficient funds and their cash and asset balances may go
+negative; holds are still derived from open orders, so `reserved` keeps its
+meaning and `available` may be negative. Every execution still settles, so
+balances show the net position and total cash/asset across accounts is
+conserved. Validation, self-trade prevention, permissions, cancellation and
+observations are unchanged. Funding is not yet exposed over the API; the
+ranking data slice publishes it so the website can exclude unlimited (operator
+bot) accounts, as decided in [competition](/competition.md#bot-exclusion).
+
 ## Configuration
 
 `Exchange.from_config(path=...)` loads this private JSON shape:
@@ -57,9 +83,13 @@ orders, fills, or holds; token configuration is independent.
   "price_increment": "0.01", "quantity_increment": "0.1"
 }, "accounts": {
   "alice": {"cash": "1000", "asset": "0"},
-  "bob": {"cash": "0", "asset": "10"}
+  "bob": {"cash": "0", "asset": "10"},
+  "market-maker": {"cash": "0", "asset": "0", "funding": "unlimited"}
 }}
 ```
+
+`funding` is optional (`funded` or `unlimited`); restart restores it with the
+allocations.
 
 All amounts are strings, finite, nonnegative and exactly aligned to the relevant
 units. Invalid configuration fails with sanitized errors. The examples are
@@ -81,7 +111,8 @@ have signed account/filter/process-scoped cursors and an insertion high watermar
 Order status is current at page read, not frozen across pages. Recovery snapshots
 contain coherent balances, retained orders and a fill watermark. REST and live adapters share this instance, as described below.
 
-`exchange/tests/test_trading.py` covers the Alice/Bob trade, price savings,
+`exchange/tests/test_bot_support.py` covers maker-side public trades, IOC and
+unlimited funding. `exchange/tests/test_trading.py` covers the Alice/Bob trade, price savings,
 partial cancellation, inventory protection, competing funding requests,
 self-trade releases, conservation, restart, grants/ownership, client IDs,
 pagination, low Decimal precision and failure isolation after reservation,
@@ -102,7 +133,8 @@ Use one Uvicorn worker: state is process-local, not shared between workers.
 | GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines (`{"orders": n, "fills": n}`) |
 | GET /instruments, /book, /trades | public, ignores optional credentials |
 
-POST requires instrument_id, side, price and quantity; amounts must be canonical
+POST requires instrument_id, side, price and quantity, with optional
+time_in_force (`GTC` or `IOC`); amounts must be canonical
 unsigned decimal strings such as `100` or `0.5` (no exponents, signs, separators,
 whitespace or leading zeros). Responses use plain decimal notation, scaled to the
 relevant increment. /book and /balances include the commit_id they describe. Optional type must be limit; optional client_order_id is a canonical
@@ -121,7 +153,9 @@ filter status. Filtered pages may be empty; follow next_cursor until null.
 The insertion high watermark stays fixed while snapshots reflect
 current state at each page read. Fills accept high_watermark from the recovery
 snapshot. A new process invalidates old cursors. Public Trade projections expose
-exchange maker/taker IDs without accounts or private client IDs.
+exchange maker/taker IDs without accounts or private client IDs, and `side`:
+the **maker** order's side, as in Coinbase match messages; the taker's side is
+the opposite. Private fills keep their own-order `side` and `liquidity`.
 
 `exchange/tests/test_trading_api.py` verifies real HTTP trades, exact balances,
 permissions/ownership, malformed input, client-ID recovery, pagination, public
@@ -135,7 +169,8 @@ Connect to /ws and subscribe once within 5 seconds:
 {"type":"subscribe","channels":["book","trades","orders","fills"],"token":"<private token>"}
 ```
 
-Public-only book/trades subscriptions need no token. Private orders/fills require
+Public-only book/trades/news subscriptions need no token; news is described in
+[market news](/market-news.md). Private orders/fills require
 a read grant and use only the token's provisioned account; no account selector
 is accepted. Invalid supplied tokens reject the whole subscription. Never send
 tokens in URLs or log subscription frames. There are no WebSocket order commands,

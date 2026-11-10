@@ -20,6 +20,20 @@ class Liquidity(StrEnum):
     TAKER = "taker"
 
 
+class TimeInForce(StrEnum):
+    """Say how long an order's unfilled quantity may rest, following Coinbase."""
+
+    GTC = "GTC"  # good till cancelled: the remainder rests on the book
+    IOC = "IOC"  # immediate or cancel: the remainder is cancelled at once
+
+
+class Funding(StrEnum):
+    """Operator-assigned funding policy for one account."""
+
+    FUNDED = "funded"  # orders need available balances and place holds
+    UNLIMITED = "unlimited"  # never limited by funds; balances may go negative
+
+
 class OrderStatus(StrEnum):
     """Describe the current lifecycle state of an accepted order."""
 
@@ -67,6 +81,7 @@ class OrderSnapshot:
     cancelled_quantity: Decimal = Decimal(0)
     prevented_quantity: Decimal = Decimal(0)
     commit_version: int = 0
+    time_in_force: TimeInForce = TimeInForce.GTC
 
 
 @dataclass(frozen=True, slots=True)

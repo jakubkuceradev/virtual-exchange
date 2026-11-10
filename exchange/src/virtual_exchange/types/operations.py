@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from virtual_exchange.types.trading import Balance, OrderSide, OrderSnapshot
+from virtual_exchange.types.trading import (
+    Balance,
+    OrderSide,
+    OrderSnapshot,
+    TimeInForce,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +19,7 @@ class LimitOrder:
     price: Decimal
     quantity: Decimal
     client_order_id: str | None = None
+    time_in_force: TimeInForce = TimeInForce.GTC
 
 
 @dataclass(frozen=True, slots=True)

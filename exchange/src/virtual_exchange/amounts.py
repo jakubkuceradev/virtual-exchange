@@ -52,7 +52,8 @@ def units(value: Decimal, increment: Decimal) -> int:
 
 def decimal(units: int, increment: Decimal) -> Decimal:
     step, exponent = coefficient(increment)
-    return Decimal((0, Decimal(units * step).as_tuple().digits, exponent))
+    digits = Decimal(abs(units) * step).as_tuple().digits
+    return Decimal((int(units < 0), digits, exponent))
 
 
 @dataclass(frozen=True, slots=True)

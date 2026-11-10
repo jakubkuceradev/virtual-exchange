@@ -175,7 +175,10 @@ def test_independent_grants_through_real_http_dependency(
     with TestClient(app) as client:
         response = client.get("/test-protected", headers=bearer(TOKENS[kind]))
         assert client.get("/test-protected").status_code == 401
-    allowed = kind == "both" or kind == permission.value
+    # "both" is read + trade; neither implies publish_news.
+    allowed = kind == permission.value or (
+        kind == "both" and permission in {Permission.READ, Permission.TRADE}
+    )
     assert response.status_code == (200 if allowed else 403)
     if not allowed:
         assert (

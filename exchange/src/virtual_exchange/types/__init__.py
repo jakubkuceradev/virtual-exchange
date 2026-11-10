@@ -14,6 +14,10 @@ from virtual_exchange.types.matching import (
     Execution,
     MatchingResult,
 )
+from virtual_exchange.types.news import (
+    NewsDraft,
+    NewsItem,
+)
 from virtual_exchange.types.operations import (
     Acceptance,
     AccountSnapshot,
@@ -23,12 +27,14 @@ from virtual_exchange.types.operations import (
 from virtual_exchange.types.trading import (
     Balance,
     Fill,
+    Funding,
     Instrument,
     Liquidity,
     OrderSide,
     OrderSnapshot,
     OrderStatus,
     SubmitOrderResult,
+    TimeInForce,
 )
 
 __all__ = [
@@ -41,9 +47,12 @@ __all__ = [
     "BookLevel",
     "Execution",
     "Fill",
+    "Funding",
     "Instrument",
     "Liquidity",
     "MatchingResult",
+    "NewsDraft",
+    "NewsItem",
     "OrderBookSnapshot",
     "OrderSide",
     "OrderSnapshot",
@@ -51,5 +60,6 @@ __all__ = [
     "Permission",
     "SubmitOrderResult",
     "Ticker",
+    "TimeInForce",
     "Trade",
 ]
