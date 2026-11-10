@@ -121,6 +121,13 @@ def test_listing_matches_balances_at_its_commit(state_dir):
             "created_at",
             "cash",
             "asset",
+            "fill_count",
+        }
+        # Alice's bid filled against carol only; bob's ask rests untouched.
+        assert {k: r["fill_count"] for k, r in rows.items()} == {
+            "alice": 1,
+            "bob": 0,
+            "carol": 1,
         }
         assert rows["alice"]["cash"] == "700.000"  # 200 of it reserved
         assert rows["carol"]["asset"] == "-3.0"

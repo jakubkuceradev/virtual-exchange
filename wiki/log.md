@@ -2,7 +2,7 @@
 
 ## 2026-11-10
 
-* **Account observations**: Added the operator-granted `observe_accounts` permission and `GET /accounts`, listing every account's funding, creation time and total cash/asset at one commit for the website backend's rankings. The store records each account's `created_at` (schema version 2; version 1 stores are refused). Bot accounts are listed; consumers filter on `funding`.
+* **Account observations**: Added the operator-granted `observe_accounts` permission and `GET /accounts`, listing every account's funding, creation time, total cash/asset and fill count at one commit for the website backend's rankings. The store records each account's `created_at` (schema version 2; version 1 stores are refused). Bot accounts are listed; consumers filter on `funding`.
 
 * **Exchange persistence**: Acknowledged commands are now durable. Each commit is written in one SQLite transaction (WAL, `synchronous=FULL`) before memory changes and before observations or the response; a failed write stops the exchange for recovery. Memory holds only the live book, balances and counters; history lives in the store. Restart restores the exact committed state, including queue priority and client IDs, with a new `process_id` and continuing commit IDs and watermarks. Persisted state wins over configuration; instrument or funding changes refuse startup. Stores are created only by `python -m virtual_exchange.admin init-store`, and `EXCHANGE_STATE_DIR` is required with trading. The website restart copy is a recorded TODO.
 

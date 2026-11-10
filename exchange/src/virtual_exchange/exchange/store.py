@@ -447,6 +447,10 @@ class Store:
             (account,),
         ).fetchone()
 
+    def fill_counts(self) -> dict[str, int]:
+        """Every account's number of fills; one row per account, not history."""
+        return dict(self._db.execute("SELECT account_id, fill_count FROM accounts"))
+
     def orders_between(
         self, account: str, start: int, stop: int
     ) -> tuple[OrderSnapshot, ...]:

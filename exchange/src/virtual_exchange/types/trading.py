@@ -65,10 +65,11 @@ class Balance:
 
 @dataclass(frozen=True, slots=True)
 class AccountObservation:
-    """Report one account's funding policy, creation time and total balances.
+    """Report one account's funding policy, creation time, totals and fill count.
 
     Totals include reserved amounts; cash is in the quote asset and asset in the
     base asset of the exchange's instrument. Unlimited accounts may be negative.
+    fill_count is the number of fills the account has received, ever.
     """
 
     account_id: str
@@ -76,6 +77,7 @@ class AccountObservation:
     created_at: datetime
     cash: Decimal
     asset: Decimal
+    fill_count: int
 
 
 @dataclass(frozen=True, slots=True)

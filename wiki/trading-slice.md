@@ -169,7 +169,9 @@ privacy, disabled trading, and authentication before malformed-body parsing.
 the `/balances` envelope (`process_id`, `commit_id`, `data`). Each row has
 `account_id`, `funding` (`funded`/`unlimited`), `created_at` (UTC ISO 8601, when
 the store first recorded the account; accounts in one startup share it) and
-total `cash` (quote asset) and `asset` (base asset), reserved amounts included.
+total `cash` (quote asset) and `asset` (base asset), reserved amounts included,
+and `fill_count`, the number of fills the account has ever received (eligibility
+needs a fill in the period, and totals alone can miss fills that net out).
 Unlimited accounts may be negative; bot accounts are listed and consumers
 filter on `funding`. The response is `Cache-Control: no-store`.
 

@@ -712,7 +712,9 @@ class Exchange:
     async def list_accounts(
         self, *, identity: AuthenticatedIdentity
     ) -> tuple[int, tuple[AccountObservation, ...]]:
-        """Return every account's funding, creation time and totals at one commit.
+        """Return every account's funding, creation time, totals and fill count.
+
+        All rows describe one commit: memory and the store agree under the lock.
 
         The caller needs only the grant: an observer is not a trading account.
         Cost follows the number of accounts, never history.
@@ -720,6 +722,7 @@ class Exchange:
         require_permission(identity=identity, permission=Permission.OBSERVE_ACCOUNTS)
         async with self._locked():
             total = self._state.ledger.total
+            fills = self._store.fill_counts()
             return self._state.sequence, tuple(
                 AccountObservation(
                     account,
@@ -729,6 +732,7 @@ class Exchange:
                     decimal(
                         total[account][1], self.amounts.instrument.quantity_increment
                     ),
+                    fills[account],
                 )
                 for account, (policy, created_at) in self._directory.items()
             )
