@@ -1,5 +1,9 @@
 # Wiki Update Log
 
+## 2026-11-14
+
+* **House agents ranked**: Three operator-run funded competitors (`kai`, `lena`, `max`) appear in rankings on purpose; the unlimited-funding invariant now covers liquidity bots only.
+
 ## 2026-11-10
 
 * **Competition service (website backend)**: Decided and implemented rankings: plain return on a 5-minute time-weighted mid mark, continuous plus Europe/Prague calendar week/month/year, baselines at the boundary or at creation for late joiners, eligibility for funded accounts with a fill in the period, shared ranks for ties, frozen final standings, a 10-minute value series kept one year, a backend SQLite store with online backup, and public and authenticated `/competition/*` routes.

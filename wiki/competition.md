@@ -54,10 +54,16 @@ scripts, hosted sandbox strategies on their accounts) is ranked normally.
   Rankings include only `funded` accounts; every `unlimited` account is excluded.
   An account with unlimited money has no meaningful return, so this rule
   holds regardless of who runs the account.
-- **Invariant:** every operator bot account is configured `unlimited`. All
-  planned bots are. If a funded operator bot is ever needed, add an explicit
-  operator-account flag to the exchange configuration and exclude on either
-  marker; never infer from names or tokens.
+- **Invariant:** every operator bot that provides liquidity (or otherwise
+  trades without a meaningful return) is configured `unlimited`. If a funded
+  operator bot ever needs excluding, add an explicit operator-account flag to
+  the exchange configuration and exclude on either marker; never infer from
+  names or tokens.
+- **House agents are ranked on purpose (2026-11-14).** Three operator-run
+  competitors (`kai`, `lena`, `max`) give new participants opponents. They are
+  ordinary `funded` accounts with the participant default allocation, trade on
+  public data only, and rank like anyone else; no flag excludes them. Their
+  strategies live in the private market repository.
 - **Ownership:** the exchange publishes the policy as a fact and knows nothing
   of rankings; the website backend owns the eligibility rule. No separate
   website exclusion list, which could drift from exchange configuration.
