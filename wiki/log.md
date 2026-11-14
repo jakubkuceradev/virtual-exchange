@@ -1,5 +1,9 @@
 # Wiki Update Log
 
+## 2026-11-15
+
+* **Website performance**: Live market and account loads are now bounded by what the screen shows, not by exchange history. The chart shows the last 60 one-minute candles, backfilled from at most five newest-first `/trades` pages and updated per live trade; when the backfill cannot reach the window start it is labelled with where data starts ("Since HH:MM"). Strip statistics cover the same window ("1H" instead of "SESSION"). Trading needs only the instrument, book snapshot and account; price history has its own loading and unavailable states. The account keeps every resting order plus the 50 most recent closed orders and 50 most recent fills, becomes ready after `/account/snapshot` (30 s timeout), and loads fill history in the background. The session publishes at most one view per animation frame, and components subscribe to the slices they display. Exchange-side candles, statistics and a bounded account snapshot remain proposed, not implemented.
+
 ## 2026-11-14
 
 * **Exchange durability level**: The store now uses `synchronous=NORMAL` instead of `FULL`. Process crashes still lose nothing; an OS crash or power loss may lose the most recent commits, accepted for this exchange to drop one fsync per command.

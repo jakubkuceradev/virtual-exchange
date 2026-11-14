@@ -3,6 +3,8 @@
  * Orders keep the highest commit version seen (never regress); fills are
  * deduplicated by fill ID; balances accept only a commit at least as new as the
  * one shown. Nothing here fabricates reservations, fills, or order states.
+ * Retention is bounded: every resting order, plus the most recent closed orders
+ * and fills, so memory and rendering stay constant for busy accounts.
  */
 import { add } from '../trading/decimal.ts';
 import type { Fill, Holding, Order } from '../trading/types.ts';
@@ -22,6 +24,38 @@ import {
   order,
   text,
 } from './wire.ts';
+
+/** Closed (filled or cancelled) orders kept for display, newest first. */
+export const CLOSED_ORDER_LIMIT = 50;
+/** Fills kept for display, newest first. */
+export const FILL_LIMIT = 50;
+
+const resting = (entry: WireOrder) =>
+  entry.status === 'open' || entry.status === 'partially_filled';
+const newestOrder = (a: WireOrder, b: WireOrder) =>
+  b.acceptedAt - a.acceptedAt || b.version - a.version;
+const tradeNumber = (id: string) => BigInt(/^\d+$/.test(id) ? id : '0');
+const newestFill = (a: WireFill, b: WireFill) => {
+  const x = tradeNumber(a.tradeId),
+    y = tradeNumber(b.tradeId);
+  return x === y ? b.executedAt - a.executedAt : x < y ? 1 : -1;
+};
+
+/** Every resting order plus the most recent closed ones. */
+function retainOrders(orders: Map<string, WireOrder>) {
+  const closed = [...orders.values()].filter((entry) => !resting(entry));
+  if (closed.length <= CLOSED_ORDER_LIMIT) return orders;
+  for (const entry of closed.sort(newestOrder).slice(CLOSED_ORDER_LIMIT))
+    orders.delete(entry.orderId);
+  return orders;
+}
+
+function retainFills(fills: Map<string, WireFill>) {
+  if (fills.size <= FILL_LIMIT) return fills;
+  for (const entry of [...fills.values()].sort(newestFill).slice(FILL_LIMIT))
+    fills.delete(entry.fillId);
+  return fills;
+}
 
 export type Balances = { commitId: number; byAsset: Map<string, WireBalance> };
 
@@ -78,10 +112,19 @@ export function balancesResponse(value: unknown): {
   };
 }
 
-export function install(base: AccountSnapshot, fills: unknown[]): AccountState {
+/**
+ * Account state from a snapshot. Fill history arrives separately (applyFills);
+ * `keep` carries fills already shown so a resync does not blank the table.
+ */
+export function install(
+  base: AccountSnapshot,
+  keep: ReadonlyMap<string, WireFill> = new Map(),
+): AccountState {
   return {
-    orders: new Map(base.orders.map((entry) => [entry.orderId, entry])),
-    fills: new Map(fills.map(fill).map((entry) => [entry.fillId, entry])),
+    orders: retainOrders(
+      new Map(base.orders.map((entry) => [entry.orderId, entry])),
+    ),
+    fills: retainFills(new Map(keep)),
     balances: base.balances,
   };
 }
@@ -97,7 +140,7 @@ export function applyOrders(
     if (!current || incoming.version > current.version)
       orders.set(incoming.orderId, incoming);
   }
-  return { ...state, orders };
+  return { ...state, orders: retainOrders(orders) };
 }
 
 export function applyFills(
@@ -107,7 +150,7 @@ export function applyFills(
   const fills = new Map(state.fills);
   for (const incoming of list(payload, 'fills').map(fill))
     fills.set(incoming.fillId, incoming);
-  return { ...state, fills };
+  return { ...state, fills: retainFills(fills) };
 }
 
 /** Accept a balance reply only if it is not older than what is shown. */
@@ -131,35 +174,25 @@ export function holding(balances: Balances, asset: string): Holding {
 }
 
 export function orderRows(state: AccountState): Order[] {
-  return [...state.orders.values()]
-    .sort((a, b) => b.acceptedAt - a.acceptedAt || b.version - a.version)
-    .map((entry) => ({
-      id: entry.orderId,
-      label: entry.orderId.slice(0, 8),
-      side: entry.side,
-      price: entry.price,
-      quantity: entry.quantity,
-      remaining: entry.remaining,
-      status: entry.status,
-    }));
+  return [...state.orders.values()].sort(newestOrder).map((entry) => ({
+    id: entry.orderId,
+    label: entry.orderId.slice(0, 8),
+    side: entry.side,
+    price: entry.price,
+    quantity: entry.quantity,
+    remaining: entry.remaining,
+    status: entry.status,
+  }));
 }
 
-const tradeNumber = (id: string) => BigInt(/^\d+$/.test(id) ? id : '0');
-
 export function fillRows(state: AccountState): Fill[] {
-  return [...state.fills.values()]
-    .sort((a, b) => {
-      const x = tradeNumber(a.tradeId),
-        y = tradeNumber(b.tradeId);
-      return x === y ? b.executedAt - a.executedAt : x < y ? 1 : -1;
-    })
-    .map((entry) => ({
-      id: entry.fillId,
-      side: entry.side,
-      price: entry.price,
-      quantity: entry.quantity,
-      time: time(entry.executedAt),
-    }));
+  return [...state.fills.values()].sort(newestFill).map((entry) => ({
+    id: entry.fillId,
+    side: entry.side,
+    price: entry.price,
+    quantity: entry.quantity,
+    time: time(entry.executedAt),
+  }));
 }
 
 export function assets(instrument: WireInstrument) {

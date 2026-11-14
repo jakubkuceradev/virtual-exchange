@@ -102,6 +102,11 @@ const IDLE: CommandState = {
   canDismiss: false,
   feedback: null,
 };
+/**
+ * The account snapshot lists every order the account ever placed until the
+ * exchange bounds it, so it gets longer than the default request timeout.
+ */
+const SNAPSHOT_TIMEOUT_MS = 30_000;
 /** Lookups after an ambiguous submit: 1 s, 2 s, 4 s, 8 s, 16 s. */
 const LOOKUP_ATTEMPTS = 5;
 
@@ -231,6 +236,8 @@ export class LiveSession {
   private accountId: string | null = null;
   private permissions: readonly string[] = [];
   private account: AccountState | null = null;
+  /** Fill history loads after the account is ready; trading never waits for it. */
+  private fillsReady = false;
   private bufferedPrivate: StreamEvent[] = [];
   private balancesInFlight = false;
   private balancesQueued = false;
@@ -313,6 +320,7 @@ export class LiveSession {
     this.accountId = null;
     this.permissions = [];
     this.account = null;
+    this.fillsReady = false;
     this.accountPhase = 'signed-out';
     this.privateAttempt = 0;
     this.epoch++;
@@ -407,6 +415,7 @@ export class LiveSession {
     this.newsSynced = false;
     this.newsPhase = 'connecting';
     this.account = null;
+    this.fillsReady = false;
     if (restarted) this.restartedAt = Date.now();
     this.epoch++;
     this.clearPending();
@@ -680,6 +689,7 @@ export class LiveSession {
       this.permissions = [];
     }
     this.account = null;
+    this.fillsReady = false;
     this.emit();
   }
 
@@ -768,15 +778,15 @@ export class LiveSession {
   private async syncAccount(link: Link, token: string) {
     this.accountPhase = this.account ? 'stale' : 'syncing';
     let base: AccountSnapshot;
-    let fills: unknown[];
     try {
-      base = snapshot(await this.env.rest.get('/account/snapshot', token));
+      base = snapshot(
+        await this.env.rest.get(
+          '/account/snapshot',
+          token,
+          SNAPSHOT_TIMEOUT_MS,
+        ),
+      );
       if (!link.alive || !this.sameProcess(base.processId)) return;
-      const page = await this.env.rest.all('/fills', token, {
-        high_watermark: String(base.fillHighWatermark),
-      });
-      if (!link.alive || !this.sameProcess(page.processId)) return;
-      fills = page.data;
     } catch (error) {
       if (!link.alive) return;
       if (error instanceof RestFailure && error.kind === 'unauthenticated')
@@ -790,7 +800,10 @@ export class LiveSession {
       else this.retryPrivate();
       return;
     }
-    let state = install(base, fills);
+    // Fills observed before this resync stay; the fill load and buffered
+    // events merge into them by fill ID.
+    if (!this.account) this.fillsReady = false;
+    let state = install(base, this.account?.fills);
     const newer = this.bufferedPrivate.some(
       (event) => event.kind === 'update' && event.commitId > base.commitId,
     );
@@ -804,6 +817,33 @@ export class LiveSession {
     this.matchPending();
     this.emit();
     if (newer) void this.refreshBalances(link, token);
+    void this.loadFills(link, token, base.fillHighWatermark);
+  }
+
+  /** Fill history up to the snapshot's watermark, retried until it loads. */
+  private async loadFills(link: Link, token: string, watermark: number) {
+    for (let attempt = 0; link.alive; attempt++) {
+      try {
+        const page = await this.env.rest.all('/fills', token, {
+          high_watermark: String(watermark),
+        });
+        if (!link.alive || !this.account || !this.sameProcess(page.processId))
+          return;
+        this.account = applyFills(this.account, page.data);
+        this.fillsReady = true;
+        this.emit();
+        return;
+      } catch (error) {
+        if (!link.alive) return;
+        if (error instanceof RestFailure && error.kind === 'unauthenticated') {
+          this.stopPrivate('rejected');
+          return;
+        }
+      }
+      await new Promise<void>((resolve) => {
+        this.env.setTimeout(() => resolve(), this.backoff(attempt));
+      });
+    }
   }
 
   /** Coalesced: one request in flight, at most one queued behind it. */
@@ -1223,6 +1263,7 @@ export class LiveSession {
         this.accountPhase,
         this.accountId,
         this.account,
+        this.fillsReady,
         this.instrument,
         this.permissions,
       ],
@@ -1272,6 +1313,7 @@ export class LiveSession {
       asset: holding(account.balances, instrument.baseAsset),
       orders: orderRows(account),
       fills: fillRows(account),
+      fillsReady: this.fillsReady,
     };
   }
 

@@ -36,6 +36,7 @@ export type Page = {
   highWatermark: number;
 };
 
+/** Default request timeout; slow reads pass their own. */
 const TIMEOUT_MS = 10_000;
 
 async function code(response: Response): Promise<string> {
@@ -75,6 +76,7 @@ export function createRest(base = '/exchange', fetcher: Fetch = fetch) {
     path: string,
     token: string | null,
     body?: unknown,
+    timeoutMs = TIMEOUT_MS,
   ): Promise<unknown> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -85,7 +87,7 @@ export function createRest(base = '/exchange', fetcher: Fetch = fetch) {
         method,
         headers,
         cache: 'no-store',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch {
@@ -98,8 +100,11 @@ export function createRest(base = '/exchange', fetcher: Fetch = fetch) {
       throw new RestFailure('ambiguous', 'malformed_response', response.status);
     }
   }
-  const get = (path: string, token: string | null = null) =>
-    request('GET', path, token);
+  const get = (
+    path: string,
+    token: string | null = null,
+    timeoutMs = TIMEOUT_MS,
+  ) => request('GET', path, token, undefined, timeoutMs);
   /** One page of a cursor-paginated list. */
   async function fetchPage(
     path: string,
