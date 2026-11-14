@@ -225,8 +225,10 @@ class Store:
                     f"this exchange needs version {SCHEMA_VERSION}"
                 )
             connection.execute("PRAGMA journal_mode = WAL")
-            # FULL syncs the WAL on every commit: acknowledged means on disk.
-            connection.execute("PRAGMA synchronous = FULL")
+            # NORMAL syncs the WAL only at checkpoints. A process crash loses
+            # nothing; an OS crash or power loss may lose the latest commits.
+            # Accepted for this exchange to avoid one fsync per command.
+            connection.execute("PRAGMA synchronous = NORMAL")
             connection.execute("PRAGMA busy_timeout = 5000")
         except BaseException:
             os.close(lock)
