@@ -7,16 +7,20 @@
 import { CandleChart, intervalLabel } from './Charts';
 import { cx, money, number } from './styles';
 import { BookRows, FillRows, OrderRows, OrderTicket } from './Trading';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
+import type { Decimal } from './trading/decimal.ts';
 import { add, cmp, mul, sub, toNumber } from './trading/decimal.ts';
-import type { MarketView } from './trading/types.ts';
+import type { MarketStats } from './trading/types.ts';
 
 /** Signed percentage change between the first and latest execution prices. */
-export function change(market: MarketView): string | null {
-  if (!market.stats || market.lastPrice == null) return null;
-  const first = toNumber(market.stats.first);
+export function change(
+  stats: MarketStats | null,
+  lastPrice: Decimal | null,
+): string | null {
+  if (!stats || lastPrice == null) return null;
+  const first = toNumber(stats.first);
   if (!first) return null;
-  const value = ((toNumber(market.lastPrice) - first) / first) * 100;
+  const value = ((toNumber(lastPrice) - first) / first) * 100;
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}%`;
 }
 const day = (epoch: number) =>
@@ -30,13 +34,15 @@ const day = (epoch: number) =>
 
 /** @implemented-ui Market strip, chart, book, ticket, and own activity from the source. */
 export function Trade({ active }: { active: boolean }) {
-  const { market, account } = useTrading();
-  const base = market.instrument?.baseAsset ?? '—';
-  const quote = market.instrument?.quoteAsset ?? '—';
-  const { lastPrice, stats, chart } = market;
-  const ask = market.book?.asks[0]?.price;
-  const bid = market.book?.bids[0]?.price;
-  const movement = change(market);
+  const instrument = useSource((s) => s.market.instrument);
+  const lastPrice = useSource((s) => s.market.lastPrice);
+  const stats = useSource((s) => s.market.stats);
+  const statsLabel = useSource((s) => s.market.statsLabel);
+  const chart = useSource((s) => s.market.chart);
+  const historyNote = useSource((s) => s.market.historyNote);
+  const base = instrument?.baseAsset ?? '—';
+  const quote = instrument?.quoteAsset ?? '—';
+  const movement = change(stats, lastPrice);
   const latest = chart.candles.at(-1);
   return (
     <section data-view="trade" aria-labelledby="trade-title" hidden={!active}>
@@ -54,7 +60,7 @@ export function Trade({ active }: { active: boolean }) {
               <span className={cx('muted')}>{`/ ${quote}`}</span>
             </h2>
             <span className={cx('small muted')}>
-              {`${market.instrument?.baseName ?? base} · fictional asset`}
+              {`${instrument?.baseName ?? base} · fictional asset`}
             </span>
           </div>
         </div>
@@ -73,7 +79,7 @@ export function Trade({ active }: { active: boolean }) {
           </strong>
         </div>
         <div>
-          <span className={cx('label')}>{`${market.statsLabel} CHANGE`}</span>
+          <span className={cx('label')}>{`${statsLabel} CHANGE`}</span>
           <strong
             className={cx(
               movement != null &&
@@ -84,15 +90,13 @@ export function Trade({ active }: { active: boolean }) {
           </strong>
         </div>
         <div>
-          <span className={cx('label')}>
-            {`${market.statsLabel} HIGH / LOW`}
-          </span>
+          <span className={cx('label')}>{`${statsLabel} HIGH / LOW`}</span>
           <strong className={cx('small')}>
             {stats ? `${money(stats.high)} / ${money(stats.low)}` : '— / —'}
           </strong>
         </div>
         <div>
-          <span className={cx('label')}>{`${market.statsLabel} VOLUME`}</span>
+          <span className={cx('label')}>{`${statsLabel} VOLUME`}</span>
           <strong>
             {stats ? (
               <>
@@ -119,7 +123,7 @@ export function Trade({ active }: { active: boolean }) {
             <CandleChart chart={chart} />
           </div>
           <div className={cx('panel-foot')}>
-            <span>{latest ? day(latest.start) : market.historyNote}</span>
+            <span>{latest ? day(latest.start) : historyNote}</span>
             <span>{`Prices in ${quote}`}</span>
           </div>
         </article>
@@ -152,22 +156,7 @@ export function Trade({ active }: { active: boolean }) {
                 <BookRows side="asks" />
               </tbody>
             </table>
-            <div className={cx('spread')}>
-              <span id="book-mid">
-                {ask != null && bid != null ? (
-                  <>
-                    {money(mul(add(ask, bid), '0.5'))} <small>{quote}</small>
-                  </>
-                ) : (
-                  '—'
-                )}
-              </span>
-              <span id="book-spread">
-                {ask != null && bid != null && cmp(ask, bid) >= 0
-                  ? `Spread ${money(sub(ask, bid))}`
-                  : 'Spread unavailable'}
-              </span>
-            </div>
+            <BookSpread quote={quote} />
             <table className={cx('book-table')}>
               <caption className={cx('sr-only')}>
                 {'Public bid orders, price and quantity'}
@@ -197,17 +186,7 @@ export function Trade({ active }: { active: boolean }) {
           <div className={cx('panel-heading')}>
             <h2>
               {'Your orders '}
-              <span id="open-count" className={cx('count')}>
-                {account.status === 'ready' || account.status === 'stale'
-                  ? `${
-                      account.orders.filter(
-                        (order) =>
-                          order.status === 'open' ||
-                          order.status === 'partially_filled',
-                      ).length
-                    } open`
-                  : '—'}
-              </span>
+              <OpenCount />
             </h2>
           </div>
           <div className={cx('table-scroll')}>
@@ -258,5 +237,46 @@ export function Trade({ active }: { active: boolean }) {
         </article>
       </div>
     </section>
+  );
+}
+
+/** @implemented-ui Mid price and spread from the best quotes. */
+function BookSpread({ quote }: { quote: string }) {
+  const ask = useSource((s) => s.market.book?.asks[0]?.price);
+  const bid = useSource((s) => s.market.book?.bids[0]?.price);
+  return (
+    <div className={cx('spread')}>
+      <span id="book-mid">
+        {ask != null && bid != null ? (
+          <>
+            {money(mul(add(ask, bid), '0.5'))} <small>{quote}</small>
+          </>
+        ) : (
+          '—'
+        )}
+      </span>
+      <span id="book-spread">
+        {ask != null && bid != null && cmp(ask, bid) >= 0
+          ? `Spread ${money(sub(ask, bid))}`
+          : 'Spread unavailable'}
+      </span>
+    </div>
+  );
+}
+
+/** @implemented-ui Count of the caller's resting orders. */
+function OpenCount() {
+  const account = useSource((s) => s.account);
+  return (
+    <span id="open-count" className={cx('count')}>
+      {account.status === 'ready' || account.status === 'stale'
+        ? `${
+            account.orders.filter(
+              (order) =>
+                order.status === 'open' || order.status === 'partially_filled',
+            ).length
+          } open`
+        : '—'}
+    </span>
   );
 }

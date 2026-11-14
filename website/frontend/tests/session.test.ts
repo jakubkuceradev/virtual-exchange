@@ -488,3 +488,42 @@ test('a resubscribe fetches only trades newer than those applied', async () => {
   assert.equal(market.lastPrice, '104.00');
   assert.equal(market.stats?.volume, '3');
 });
+
+test('changes between frames publish one view, and unchanged slices keep identity', async () => {
+  const h = harness({ frames: 'manual' });
+  h.session.start();
+  await h.reply('/instruments', instruments());
+  const socket = h.sockets[0];
+  socket?.open();
+  socket?.deliver(subscribed({ book: 0, trades: 0 }));
+  socket?.deliver(...bookSnapshot(0, [['99.00', '1']], [['101.00', '2']]));
+  await h.reply(
+    '/trades',
+    page([tradeRecord('1', '100.00', '1', '2026-11-07T12:00:00+00:00')]),
+  );
+  h.frame();
+  const before = h.session.getView();
+  let published = 0;
+  h.session.subscribe(() => published++);
+  for (let sequence = 1; sequence <= 50; sequence++)
+    socket?.deliver(
+      frame('book', sequence, 'update', [
+        { side: 'buy', price: '99.00', quantity: String(sequence) },
+      ]),
+    );
+  // Nothing is published until the frame runs, then exactly once.
+  assert.equal(h.session.getView(), before);
+  h.frame();
+  assert.equal(published, 1);
+  const after = h.session.getView();
+  assert.equal(after.market.book?.bids[0]?.quantity, '50');
+  // Book-only changes leave the chart, statistics, account, and news untouched.
+  assert.equal(after.market.chart, before.market.chart);
+  assert.equal(after.market.stats, before.market.stats);
+  assert.equal(after.market.instrument, before.market.instrument);
+  assert.equal(after.account, before.account);
+  assert.equal(after.news, before.news);
+  // A frame without changes publishes nothing.
+  h.frame();
+  assert.equal(published, 1);
+});

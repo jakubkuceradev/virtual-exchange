@@ -4,7 +4,7 @@ React 19.3.1, TypeScript 7.0.2, Vite 8.3.6 and headless Mantine 9.7.5 (pinned in
 package.json and the lockfile) implement the approved Overview, Trade,
 Leaderboard and API / Account views, plus a public News view with a live unread
 count in the navigation. Every view reads one data source
-(`useTrading()`), selected by build mode:
+(`useSource(select)`), selected by build mode:
 
 - **Live** (default): connects to a running exchange through a same-origin
   proxy. Public market data shows without a token; an API token entered on the

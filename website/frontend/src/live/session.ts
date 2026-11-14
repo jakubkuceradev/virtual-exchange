@@ -71,6 +71,11 @@ export type Environment = {
   random: () => number;
   /** Wall clock, epoch milliseconds; ages the price history window. */
   now: () => number;
+  /**
+   * Run `callback` before the next render (browser: requestAnimationFrame, which
+   * hidden tabs defer). State changes in between publish one view.
+   */
+  schedule: (callback: () => void) => void;
   randomBytes: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer>;
 };
 
@@ -137,6 +142,23 @@ type AccountPhase =
   | 'no-read'
   | 'not-provisioned';
 
+/** Reuse the last value while its inputs are identical. */
+class Memo<T> {
+  private inputs: readonly unknown[] | null = null;
+  private value: T | undefined;
+  get(inputs: readonly unknown[], build: () => T): T {
+    if (
+      this.inputs === null ||
+      this.inputs.length !== inputs.length ||
+      this.inputs.some((input, index) => !Object.is(input, inputs[index]))
+    ) {
+      this.inputs = inputs;
+      this.value = build();
+    }
+    return this.value as T;
+  }
+}
+
 class Link {
   alive = true;
   socket: SocketLike | null = null;
@@ -162,6 +184,15 @@ export class LiveSession {
   private readonly listeners = new Set<() => void>();
   private view: LiveView;
   private running = false;
+  private publishPending = false;
+  private readonly memo = {
+    market: new Memo<MarketView>(),
+    book: new Memo<MarketView['book']>(),
+    instrument: new Memo<MarketView['instrument']>(),
+    identity: new Memo<Identity | null>(),
+    news: new Memo<NewsView>(),
+    account: new Memo<AccountView>(),
+  };
 
   private processId: string | null = null;
   private instrument: WireInstrument | null = null;
@@ -232,9 +263,17 @@ export class LiveSession {
   };
   getView = () => this.view;
 
+  /** Mark the view changed; one publish follows per scheduled frame. */
   private emit() {
-    this.view = this.compose();
-    for (const listener of this.listeners) listener();
+    if (this.publishPending) return;
+    this.publishPending = true;
+    this.env.schedule(() => {
+      this.publishPending = false;
+      const next = this.compose();
+      if (next === this.view) return;
+      this.view = next;
+      for (const listener of this.listeners) listener();
+    });
   }
 
   // ---- Lifecycle ----
@@ -1120,43 +1159,93 @@ export class LiveSession {
   // ---- View composition ----
 
   private compose(): LiveView {
-    const instrument = this.instrument;
     const history = this.history;
     history.advance(this.env.now() - this.clockSkew);
     const coverage = history.coverageStart;
-    const since = coverage === null ? null : clock(coverage);
-    const market: MarketView = {
-      status: this.marketPhase,
-      instrument: instrument && {
-        id: instrument.instrumentId,
-        baseAsset: instrument.baseAsset,
-        quoteAsset: instrument.quoteAsset,
-        baseName: null,
-        priceIncrement: instrument.priceIncrement,
-        quantityIncrement: instrument.quantityIncrement,
+    const instrument = this.memo.instrument.get([this.instrument], () =>
+      this.instrument
+        ? {
+            id: this.instrument.instrumentId,
+            baseAsset: this.instrument.baseAsset,
+            quoteAsset: this.instrument.quoteAsset,
+            baseName: null,
+            priceIncrement: this.instrument.priceIncrement,
+            quantityIncrement: this.instrument.quantityIncrement,
+          }
+        : null,
+    );
+    const book = this.memo.book.get([this.book], () =>
+      this.book ? toBook(this.book) : null,
+    );
+    const market = this.memo.market.get(
+      [
+        this.marketPhase,
+        instrument,
+        book,
+        history,
+        history.version,
+        this.historyPhase,
+        coverage,
+      ],
+      (): MarketView => {
+        const since = coverage === null ? null : clock(coverage);
+        return {
+          status: this.marketPhase,
+          instrument,
+          book,
+          lastPrice: history.lastPrice,
+          chart: history.chart,
+          stats: history.stats,
+          historyStatus: this.historyPhase,
+          statsLabel: since === null ? '1H' : `SINCE ${since}`,
+          historyNote: since === null ? 'Last 60 minutes' : `Since ${since}`,
+        };
       },
-      book: this.book ? toBook(this.book) : null,
-      lastPrice: history.lastPrice,
-      chart: history.chart,
-      stats: history.stats,
-      historyStatus: this.historyPhase,
-      statsLabel: since === null ? '1H' : `SINCE ${since}`,
-      historyNote: since === null ? 'Last 60 minutes' : `Since ${since}`,
-    };
-    const identity: Identity | null = this.accountId
-      ? {
-          accountId: this.accountId,
-          name: this.accountId,
-          initials: initials(this.accountId),
-          permissions: this.permissions,
-        }
-      : null;
+    );
+    const identity = this.memo.identity.get(
+      [this.accountId, this.permissions],
+      (): Identity | null =>
+        this.accountId
+          ? {
+              accountId: this.accountId,
+              name: this.accountId,
+              initials: initials(this.accountId),
+              permissions: this.permissions,
+            }
+          : null,
+    );
+    const news = this.memo.news.get([this.newsPhase, this.feed], () => ({
+      status: this.newsPhase,
+      items: this.feed,
+    }));
+    const account = this.memo.account.get(
+      [
+        this.accountPhase,
+        this.accountId,
+        this.account,
+        this.instrument,
+        this.permissions,
+      ],
+      () => this.composeAccount(),
+    );
+    const notice = this.notice();
+    const previous = this.view as LiveView | undefined;
+    if (
+      previous &&
+      previous.market === market &&
+      previous.identity === identity &&
+      previous.news === news &&
+      previous.account === account &&
+      previous.notice === notice &&
+      previous.commands === this.commands
+    )
+      return previous;
     return {
       identity,
       market,
-      news: { status: this.newsPhase, items: this.feed },
-      account: this.composeAccount(),
-      notice: this.notice(),
+      news,
+      account,
+      notice,
       commands: this.commands,
     };
   }

@@ -37,7 +37,9 @@ type Pending = {
   reject: (error: Error) => void;
 };
 
-export function harness() {
+/** `frames: 'manual'` queues publishes until `frame()`; default publishes at once. */
+export function harness(options: { frames?: 'sync' | 'manual' } = {}) {
+  const frames: (() => void)[] = [];
   /** Market and account sockets; news sockets are kept apart in `newsSockets`. */
   const sockets: FakeSocket[] = [];
   const newsSockets: FakeSocket[] = [];
@@ -76,6 +78,10 @@ export function harness() {
     },
     random: () => 0.5,
     now: () => now,
+    schedule: (callback) => {
+      if (options.frames === 'manual') frames.push(callback);
+      else callback();
+    },
     randomBytes: (bytes) => {
       for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 37 + uuids) & 0xff;
       uuids++;
@@ -94,6 +100,10 @@ export function harness() {
     requests,
     flush,
     pendingTimers: () => timers.size,
+    /** Run queued publishes (manual frames). */
+    frame() {
+      for (const callback of frames.splice(0)) callback();
+    },
     /** Answer the oldest pending request for `path` (prefix match). */
     async reply(path: string, body: unknown, status = 200) {
       await flush();

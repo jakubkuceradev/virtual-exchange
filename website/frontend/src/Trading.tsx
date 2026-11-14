@@ -8,15 +8,16 @@ import { UnstyledButton } from '@mantine/core';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { cx, money, number } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import type { Decimal } from './trading/decimal.ts';
 import { add, mul, normalizeInput, toNumber } from './trading/decimal.ts';
 import type {
   AccountView,
+  MarketView,
   OrderStatus,
   Outcome,
   Side,
-  TradingSource,
+  Trading,
 } from './trading/types.ts';
 
 /** Participant-facing explanation when private account data is not shown. */
@@ -38,14 +39,18 @@ export function accountMessage(account: AccountView, subject: string) {
 }
 
 /** Why the ticket cannot submit right now, or null when it can. */
-function blocked({ account, market, trading }: TradingSource): string | null {
+function blocked(
+  account: AccountView,
+  marketStatus: MarketView['status'],
+  trading: Trading,
+): string | null {
   if (account.status !== 'ready')
     return account.status === 'stale'
       ? 'Reconnecting to the exchange. Trading resumes once your account is up to date.'
       : accountMessage(account, 'balances');
   if (!account.canTrade)
     return 'This token is read-only. Use a token with trade access to place or cancel orders.';
-  if (market.status !== 'ready')
+  if (marketStatus !== 'ready')
     return 'Waiting for the order book. Trading resumes once the market is up to date.';
   if (trading.unresolved) return trading.unresolved;
   return null;
@@ -53,19 +58,22 @@ function blocked({ account, market, trading }: TradingSource): string | null {
 
 /** @implemented-ui Form state, exact estimate, and focus; outcomes come from the source. */
 export function OrderTicket() {
-  const source = useTrading();
-  const { account, market, trading } = source;
-  const base = market.instrument?.baseAsset ?? '';
-  const quote = market.instrument?.quoteAsset ?? '';
+  const kind = useSource((s) => s.kind);
+  const account = useSource((s) => s.account);
+  const marketStatus = useSource((s) => s.market.status);
+  const instrument = useSource((s) => s.market.instrument);
+  const trading = useSource((s) => s.trading);
+  const base = instrument?.baseAsset ?? '';
+  const quote = instrument?.quoteAsset ?? '';
   const [side, setSide] = useState<Side>('buy');
   // The mock keeps its reviewed sample values; live mode starts empty.
-  const sample = source.kind === 'mock';
+  const sample = kind === 'mock';
   const [price, setPrice] = useState(sample ? '110.00' : '');
   const [quantity, setQuantity] = useState(sample ? '10' : '');
   const [validation, setValidation] = useState<Outcome | null>(null);
   const priceRef = useRef<HTMLInputElement>(null),
     quantityRef = useRef<HTMLInputElement>(null);
-  const reason = blocked(source);
+  const reason = blocked(account, marketStatus, trading);
   const field = validation?.kind === 'rejected' ? validation.field : undefined;
   const typedPrice = normalizeInput(price);
   const typedQuantity = normalizeInput(quantity);
@@ -213,19 +221,21 @@ export function OrderTicket() {
 }
 /** @implemented-ui Public depth rows from the source's synchronized book. */
 export function BookRows({ side }: { side: 'asks' | 'bids' }) {
-  const { market, kind } = useTrading();
-  if (!market.book)
+  const book = useSource((s) => s.market.book);
+  const status = useSource((s) => s.market.status);
+  const kind = useSource((s) => s.kind);
+  if (!book)
     return (
       <tr>
         <td colSpan={3} className={cx('empty-cell')}>
-          {market.status === 'unavailable'
+          {status === 'unavailable'
             ? 'Order book unavailable'
             : 'Loading order book…'}
         </td>
       </tr>
     );
   let cumulative: Decimal = '0';
-  const quotes = market.book[side].map(({ price, quantity }) => {
+  const quotes = book[side].map(({ price, quantity }) => {
     cumulative = add(cumulative, quantity);
     return { price, quantity, total: cumulative };
   });
@@ -270,8 +280,9 @@ const statusClass: Record<OrderStatus, string> = {
 };
 /** @implemented-ui Own order rows, cancel affordance, and focus after cancellation. */
 export function OrderRows() {
-  const source = useTrading();
-  const { account, trading } = source;
+  const account = useSource((s) => s.account);
+  const trading = useSource((s) => s.trading);
+  const marketStatus = useSource((s) => s.market.status);
   const cancelled = useRef(false);
   useEffect(() => {
     if (!cancelled.current) return;
@@ -301,7 +312,7 @@ export function OrderRows() {
   const canCancel =
     account.status === 'ready' &&
     account.canTrade &&
-    source.market.status === 'ready' &&
+    marketStatus === 'ready' &&
     !trading.busy;
   return account.orders.map((order) => (
     <tr key={order.id}>
@@ -347,7 +358,7 @@ export function OrderRows() {
 }
 /** @implemented-ui Own execution rows. */
 export function FillRows() {
-  const { account } = useTrading();
+  const account = useSource((s) => s.account);
   if (account.status !== 'ready' && account.status !== 'stale')
     return (
       <tr>

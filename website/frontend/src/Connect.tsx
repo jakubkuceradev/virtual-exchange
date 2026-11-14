@@ -5,7 +5,7 @@
 import { UnstyledButton } from '@mantine/core';
 import { useState } from 'react';
 import { cx } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import type { AccountView, Session } from './trading/types.ts';
 
 function connectionStatus(
@@ -49,7 +49,8 @@ function connectionStatus(
 
 /** @implemented-ui Token form, connection status, and disconnect. */
 export function Connect({ session }: { session: Session }) {
-  const { account, identity } = useTrading();
+  const account = useSource((s) => s.account);
+  const identity = useSource((s) => s.identity);
   const [token, setToken] = useState('');
   const connected =
     account.status !== 'signed-out' && account.status !== 'rejected';

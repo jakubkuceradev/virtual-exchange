@@ -5,8 +5,9 @@
  * @implemented-ui Performance chart computes scale and dates from a live series.
  * @mock-frontend The sample performance series keeps its fixed scale, dates and description.
  */
+import { memo } from 'react';
 import { cx } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import { scaleOf, toNumber } from './trading/decimal.ts';
 import type { Chart } from './trading/types.ts';
 
@@ -55,7 +56,7 @@ const compact = (value: number) =>
  * With `times` (live), scale, grid and dates are computed from the series.
  * @mock-frontend Without `times`, the fixed sample scale, dates and description apply.
  */
-export function PerformanceChart({
+export const PerformanceChart = memo(function PerformanceChart({
   series,
   times = null,
 }: {
@@ -155,7 +156,7 @@ export function PerformanceChart({
       ))}
     </svg>
   );
-}
+});
 
 /** Human label for a candle interval, e.g. "15 min". */
 export function intervalLabel(interval: number) {
@@ -179,26 +180,32 @@ function niceStep(range: number) {
 }
 
 /** @implemented-ui Candles from the active source with computed scales and labels. */
-export function CandleChart({ chart }: { chart: Chart }) {
-  const { market } = useTrading();
+export const CandleChart = memo(function CandleChart({
+  chart,
+}: {
+  chart: Chart;
+}) {
+  const instrument = useSource((s) => s.market.instrument);
+  const historyStatus = useSource((s) => s.market.historyStatus);
+  const lastPrice = useSource((s) => s.market.lastPrice);
   const { candles, interval } = chart;
   const first = candles[0];
   const latest = candles.at(-1);
-  if ((!first || !latest) && market.historyStatus === 'loading')
+  if ((!first || !latest) && historyStatus === 'loading')
     return (
       <EmptyChart
         title="Loading price history"
         description="Recent executions are on their way. Trading is available meanwhile."
       />
     );
-  if ((!first || !latest) && market.historyStatus === 'unavailable')
+  if ((!first || !latest) && historyStatus === 'unavailable')
     return (
       <EmptyChart
         title="Price history unavailable"
         description="Retrying. Trading does not depend on the chart."
       />
     );
-  if ((!first || !latest) && market.lastPrice !== null)
+  if ((!first || !latest) && lastPrice !== null)
     return (
       <EmptyChart
         title="No recent executions"
@@ -212,9 +219,7 @@ export function CandleChart({ chart }: { chart: Chart }) {
         description="A price history will appear after the first trade."
       />
     );
-  const decimals = market.instrument
-    ? scaleOf(market.instrument.priceIncrement)
-    : 2;
+  const decimals = instrument ? scaleOf(instrument.priceIncrement) : 2;
   const high = Math.max(...candles.map((candle) => toNumber(candle.high)));
   const low = Math.min(...candles.map((candle) => toNumber(candle.low)));
   const span = high - low || Math.max(high * 0.02, 10 ** -decimals * 10);
@@ -238,7 +243,7 @@ export function CandleChart({ chart }: { chart: Chart }) {
   const slot = Math.min(21, (right - left) / candles.length);
   const body = Math.max(2, Math.min(10, slot * 0.5));
   const x = (index: number) => left + slot * (index + 0.5);
-  const current = toNumber(market.lastPrice ?? latest.close);
+  const current = toNumber(lastPrice ?? latest.close);
   const currentY = y(current);
   const labels = [
     ...new Set([
@@ -249,8 +254,7 @@ export function CandleChart({ chart }: { chart: Chart }) {
     ]),
   ];
   const fixed = (value: number) => value.toFixed(decimals);
-  const asset =
-    market.instrument?.baseName ?? market.instrument?.baseAsset ?? 'Market';
+  const asset = instrument?.baseName ?? instrument?.baseAsset ?? 'Market';
   return (
     <svg
       viewBox="0 0 590 335"
@@ -322,4 +326,4 @@ export function CandleChart({ chart }: { chart: Chart }) {
       ))}
     </svg>
   );
-}
+});
