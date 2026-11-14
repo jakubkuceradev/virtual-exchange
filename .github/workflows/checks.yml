@@ -79,15 +79,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - run: docker compose config --quiet
-      - run: docker compose up --build --wait --wait-timeout 120
+      - run: docker compose up --build --wait --wait-timeout 180
       - name: Check API over HTTP
         run: |
           curl --fail --silent http://127.0.0.1:8000/health | python3 -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok"}'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/does-not-exist)" = 404
-          test "$(docker compose exec -T api id -u)" != 0
           curl --fail --silent http://127.0.0.1:8001/health | python3 -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok"}'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8001/leaderboard)" = 404
-          test "$(docker compose exec -T website-backend id -u)" != 0
+      - name: Check website, exchange and backend forwarding
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q 'id="root"'
+          test "$(curl --fail --silent http://127.0.0.1:8080/healthz)" = ok
+          # The exchange has no /exchange/* routes, so this proves the prefix is stripped.
+          curl --fail --silent http://127.0.0.1:8080/exchange/health | python3 -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok"}'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/exchange/does-not-exist)" = 404
+          # Likewise the backend has no /website/* routes.
+          curl --fail --silent http://127.0.0.1:8080/website/health | python3 -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok"}'
+      - name: Check non-root users, health checks and source labels
+        run: |
+          for service in api website-backend website; do
+            test "$(docker compose exec -T "$service" id -u)" != 0
+            image="$(docker compose images --format json "$service" | python3 -c 'import json, sys; i = json.load(sys.stdin)[0]; print(i["ID"])')"
+            test "$(docker image inspect --format '{{ if .Config.Healthcheck }}yes{{ end }}' "$image")" = yes
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")" = https://github.com/jakubkuceradev/virtual-exchange
+          done
       - if: always()
         run: docker compose logs
       - if: always()
