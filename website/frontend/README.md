@@ -2,7 +2,8 @@
 
 React 19.3.1, TypeScript 7.0.2, Vite 8.3.6 and headless Mantine 9.7.5 (pinned in
 package.json and the lockfile) implement the approved Overview, Trade,
-Leaderboard and API / Account views. Every view reads one data source
+Leaderboard and API / Account views, plus a public News view with a live unread
+count in the navigation. Every view reads one data source
 (`useTrading()`), selected by build mode:
 
 - **Live** (default): connects to a running exchange through a same-origin
@@ -112,6 +113,7 @@ Full-page Chromium captures at 1440 × 1000 desktop and 390 × 844 mobile:
 | --- | --- | --- |
 | Overview | [Screenshot](previews/react/desktop-overview.png) | [Screenshot](previews/react/mobile-overview.png) |
 | Trade | [Screenshot](previews/react/desktop-trade.png) | [Screenshot](previews/react/mobile-trade.png) |
+| News | [Screenshot](previews/react/desktop-news.png) | [Screenshot](previews/react/mobile-news.png) |
 | Leaderboard | [Screenshot](previews/react/desktop-leaderboard.png) | [Screenshot](previews/react/mobile-leaderboard.png) |
 | API / Account | [Screenshot](previews/react/desktop-account.png) | [Screenshot](previews/react/mobile-account.png) |
 

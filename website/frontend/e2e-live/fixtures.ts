@@ -8,7 +8,7 @@ const port = Number(process.env.LIVE_EXCHANGE_PORT ?? 18000);
 const websitePort = Number(process.env.LIVE_WEBSITE_PORT ?? 18001);
 const root = resolve(import.meta.dirname, '../../..');
 export const tokens: Record<
-  'alice' | 'bob' | 'aliceRead' | 'aliceTrade' | 'carol' | 'observer',
+  'alice' | 'bob' | 'aliceRead' | 'aliceTrade' | 'carol' | 'observer' | 'publisher',
   string
 > = JSON.parse(readFileSync(join(dir, 'tokens.json'), 'utf8'));
 

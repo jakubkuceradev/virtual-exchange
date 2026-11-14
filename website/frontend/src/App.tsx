@@ -1,12 +1,14 @@
 /**
  * Application shell. See ../INTEGRATION.md.
  * @implemented-ui Hash navigation, history, focus handling, header identity from the
- *   active TradingSource, and header/footer links.
+ *   active TradingSource, the news unread count, and header/footer links.
  */
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Account } from './Account';
 import { Leaderboard } from './Leaderboard';
 import { useLiveSource } from './live/source.ts';
+import { News } from './News';
+import { badge, unread } from './news-format.ts';
 import { Overview } from './Overview';
 import { cx } from './styles';
 import { Trade } from './Trade';
@@ -17,18 +19,26 @@ import { useMockSource } from './trading/mock.ts';
 const useSource =
   import.meta.env.MODE === 'mock' ? useMockSource : useLiveSource;
 
-const views = ['overview', 'trade', 'leaderboard', 'account'] as const;
+const views = ['overview', 'trade', 'news', 'leaderboard', 'account'] as const;
 function subscribe(onChange: () => void) {
   window.addEventListener('hashchange', onChange);
   return () => window.removeEventListener('hashchange', onChange);
 }
 /** @implemented-ui Navigation, shell, and header identity. */
 function Dashboard() {
-  const { identity, notice } = useTrading();
+  const { identity, notice, news } = useTrading();
   const name = identity?.name ?? 'Not connected';
   const hash = useSyncExternalStore(subscribe, () => location.hash);
   const [requested, anchor] = hash.slice(1).split('/');
   const view = views.find((candidate) => candidate === requested) ?? 'overview';
+  // News IDs displayed while the News view was open in this tab (memory only).
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (view === 'news' && unread(news.items, seen))
+      setSeen(new Set([...seen, ...news.items.map((item) => item.id)]));
+  }, [view, news.items, seen]);
+  const unreadCount = view === 'news' ? 0 : unread(news.items, seen);
+  const unreadLabel = badge(unreadCount);
   const visited = useRef(false);
   useEffect(() => {
     document.title = `${view === 'account' ? 'API / Account' : view.charAt(0).toUpperCase() + view.slice(1)} · PQC Trading`;
@@ -81,6 +91,27 @@ function Dashboard() {
             {'Trade'}
           </a>
           <a
+            href="#news"
+            data-nav="news"
+            aria-current={view === 'news' ? 'page' : undefined}
+          >
+            {'News'}
+            {unreadLabel && (
+              <>
+                <span
+                  id="news-unread"
+                  className={cx('nav-badge')}
+                  aria-hidden="true"
+                >
+                  {unreadLabel}
+                </span>
+                <span className={cx('sr-only')}>
+                  {`, ${unreadCount} unread`}
+                </span>
+              </>
+            )}
+          </a>
+          <a
             href="#leaderboard"
             data-nav="leaderboard"
             aria-current={view === 'leaderboard' ? 'page' : undefined}
@@ -113,6 +144,7 @@ function Dashboard() {
         </p>
         <Overview active={view === 'overview'} />
         <Trade active={view === 'trade'} />
+        <News active={view === 'news'} />
         <Leaderboard active={view === 'leaderboard'} />
         <Account active={view === 'account'} />
       </main>

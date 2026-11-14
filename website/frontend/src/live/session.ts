@@ -3,6 +3,8 @@
  * recovery, and the participant-facing view of both.
  *
  * - Public socket (book, trades) runs regardless of credentials.
+ * - A separate public news socket keeps feed recovery independent of trading
+ *   readiness: a news gap never marks the market stale.
  * - Private socket (orders, fills) runs only for a token with read access.
  * - Every connection attempt is a Link; async continuations check `link.alive`,
  *   so late replies/events from an old token, account, or process are dropped.
@@ -16,6 +18,7 @@ import type {
   AccountView,
   Identity,
   MarketView,
+  NewsView,
   OrderInput,
   Outcome,
 } from '../trading/types.ts';
@@ -41,6 +44,8 @@ import {
   stats,
   toBook,
 } from './market.ts';
+import type { Buffered, Feed } from './news.ts';
+import { prepend, recover } from './news.ts';
 import type { StreamEvent } from './protocol.ts';
 import { Assembler, ProcessChanged } from './protocol.ts';
 import type { Rest } from './rest.ts';
@@ -65,7 +70,8 @@ export type SocketLike = {
 
 export type Environment = {
   rest: Rest;
-  openSocket: () => SocketLike;
+  /** Open a socket for one subscription; `channels` is informational. */
+  openSocket: (channels: readonly string[]) => SocketLike;
   setTimeout: (callback: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
   random: () => number;
@@ -116,6 +122,7 @@ const STATUS_TEXT: Record<WireOrder['status'], string> = {
 export type LiveView = {
   identity: Identity | null;
   market: MarketView;
+  news: NewsView;
   account: AccountView;
   notice: string | null;
   commands: CommandState;
@@ -165,6 +172,15 @@ export class LiveSession {
   private trades: Trades = new Map();
   private tradesSynced = false;
   private bufferedTrades: unknown[] = [];
+
+  // Public news
+  private newsLink: Link | null = null;
+  private newsAttempt = 0;
+  private newsRetry: unknown = null;
+  private newsPhase: NewsView['status'] = 'connecting';
+  private feed: Feed = [];
+  private newsSynced = false;
+  private bufferedNews: Buffered[] = [];
 
   // Private account
   private token: string | null = null;
@@ -218,6 +234,7 @@ export class LiveSession {
     if (this.running) return;
     this.running = true;
     this.startPublic();
+    this.startNews();
     if (this.token) this.startPrivate();
   }
 
@@ -225,8 +242,10 @@ export class LiveSession {
   stop() {
     this.running = false;
     this.endPublic();
+    this.endNews();
     this.endPrivate();
     this.env.clearTimeout(this.publicRetry);
+    this.env.clearTimeout(this.newsRetry);
     this.env.clearTimeout(this.privateRetry);
   }
 
@@ -269,7 +288,7 @@ export class LiveSession {
     closed: (code: number, reason: string) => void,
   ) {
     const assembler = new Assembler(channels, this.processId);
-    const socket = this.env.openSocket();
+    const socket = this.env.openSocket(channels);
     link.socket = socket;
     const arm = () => {
       this.env.clearTimeout(link.watchdog);
@@ -327,6 +346,7 @@ export class LiveSession {
   private processChanged() {
     const restarted = this.processId !== null;
     this.endPublic();
+    this.endNews();
     this.endPrivate();
     this.processId = null;
     this.instrument = null;
@@ -334,6 +354,9 @@ export class LiveSession {
     this.bookLive = false;
     this.trades = new Map();
     this.tradesSynced = false;
+    this.feed = [];
+    this.newsSynced = false;
+    this.newsPhase = 'connecting';
     this.account = null;
     if (restarted) this.restartedAt = Date.now();
     this.epoch++;
@@ -354,8 +377,10 @@ export class LiveSession {
     this.emit();
     if (!this.running) return;
     this.publicAttempt = 0;
+    this.newsAttempt = 0;
     this.privateAttempt = 0;
     this.startPublic();
+    this.startNews();
     if (this.token) void this.startPrivate();
   }
 
@@ -460,6 +485,77 @@ export class LiveSession {
     if (this.bookLive && this.tradesSynced) {
       this.marketPhase = 'ready';
       this.publicAttempt = 0;
+    }
+  }
+
+  // ---- Public news ----
+
+  private endNews() {
+    this.kill(this.newsLink);
+    this.newsLink = null;
+  }
+
+  private retryNews() {
+    this.endNews();
+    this.newsSynced = false;
+    this.newsPhase =
+      this.newsPhase === 'ready' || this.newsPhase === 'stale'
+        ? 'stale'
+        : 'unavailable';
+    this.emit();
+    if (!this.running) return;
+    this.env.clearTimeout(this.newsRetry);
+    this.newsRetry = this.env.setTimeout(
+      () => this.startNews(),
+      this.backoff(this.newsAttempt++),
+    );
+  }
+
+  private startNews() {
+    this.endNews();
+    const link = new Link();
+    this.newsLink = link;
+    this.bufferedNews = [];
+    this.open(
+      link,
+      ['news'],
+      null,
+      (event) => this.onNews(link, event),
+      () => this.retryNews(),
+    );
+  }
+
+  private onNews(link: Link, event: StreamEvent) {
+    if (event.kind === 'subscribed') {
+      void this.syncNews(link, event.baselines.news ?? 0);
+    } else if (event.kind === 'update') {
+      if (!this.newsSynced) {
+        this.bufferedNews.push({
+          sequence: event.sequence,
+          payload: event.payload,
+        });
+        return;
+      }
+      this.feed = prepend(this.feed, event.payload);
+      this.emit();
+    }
+  }
+
+  /** Page the list at the subscription baseline, then apply newer buffered items. */
+  private async syncNews(link: Link, baseline: number) {
+    try {
+      const page = await this.env.rest.all('/news', null, {
+        high_watermark: String(baseline),
+      });
+      if (!link.alive || !this.sameProcess(page.processId)) return;
+      this.feed = recover(page.data, baseline, this.bufferedNews);
+      this.bufferedNews = [];
+      this.newsSynced = true;
+      this.newsPhase = 'ready';
+      this.newsAttempt = 0;
+      this.emit();
+    } catch {
+      if (link.alive) this.retryNews();
     }
   }
 
@@ -990,6 +1086,7 @@ export class LiveSession {
     return {
       identity,
       market,
+      news: { status: this.newsPhase, items: this.feed },
       account: this.composeAccount(),
       notice: this.notice(),
       commands: this.commands,

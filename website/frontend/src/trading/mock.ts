@@ -23,6 +23,7 @@ import type {
   Candle,
   Competition,
   Instrument,
+  NewsItem,
   Order,
   Outcome,
   PeriodStanding,
@@ -61,6 +62,37 @@ const sampleStats = {
   low: '106.20',
   volume: '18420',
 };
+
+/** @mock-backend Sample news timed relative to page load; one announces an upcoming event. */
+function sampleNews(now: number): NewsItem[] {
+  const minute = 60_000;
+  return [
+    {
+      id: 'sample-news-3',
+      headline: 'Quant Coin foundation to publish quarterly reserves report',
+      body: 'The report is expected to cover treasury holdings and the planned token buyback.',
+      instrumentIds: ['QC-EUR'],
+      eventAt: now + 25 * minute,
+      publishedAt: now - 2 * minute,
+    },
+    {
+      id: 'sample-news-2',
+      headline: 'Large holder moves QC to an exchange wallet',
+      body: null,
+      instrumentIds: ['QC-EUR'],
+      eventAt: null,
+      publishedAt: now - 18 * minute,
+    },
+    {
+      id: 'sample-news-1',
+      headline: 'Trading session open: good luck to all participants',
+      body: 'Market data and order entry are available until the end of the session.',
+      instrumentIds: [],
+      eventAt: null,
+      publishedAt: now - 64 * minute,
+    },
+  ];
+}
 
 function order(item: DemoOrder): Order {
   return {
@@ -147,6 +179,7 @@ export function useMockSource(): TradingSource {
     () => new URLSearchParams(location.search).get('scenario') === 'no-trades',
   );
   const [demo] = useState(() => createDemo(empty));
+  const [news] = useState(() => (empty ? [] : sampleNews(Date.now())));
   const [, setVersion] = useState(0);
   const [feedback, setFeedback] = useState<Outcome | null>(null);
   function run<T>(command: () => T): T {
@@ -192,6 +225,7 @@ export function useMockSource(): TradingSource {
       statsLabel: 'SNAPSHOT',
       historyNote: 'Sample session',
     },
+    news: { status: 'ready', items: news },
     account: {
       status: 'ready',
       accountId: participant.id,

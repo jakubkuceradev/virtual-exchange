@@ -10,7 +10,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 
 - [Funded trading](/trading-slice.md) — Funded REST trading, account observations, live observations, recovery, and restart rules.
 - [Persistence](/persistence.md) — Durable SQLite commits, crash recovery, configuration-versus-store rules, and store lifecycle.
-- [Market news](/market-news.md) — Published news items, publish_news grant, list and channel recovery.
+- [Market news](/market-news.md) — Published news items, publish_news grant, list and channel recovery, website News view.
 - [Authentication](/authentication.md) — Configured bearer tokens, identity endpoint, grants, and restart lifecycle.
 - [Public interfaces](public-interfaces.md) — Experimental contracts, public types, current status, live/mock frontend modes, exchange proxy routing, and frontend stack.
 - [Development setup](development.md) — Exchange/backend startup, live/mock frontend, cross-machine LAN use, checks, and containers.

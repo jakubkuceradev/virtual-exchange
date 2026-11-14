@@ -60,6 +60,7 @@ export function useLiveSource(): TradingSource {
     kind: 'live',
     identity: view.identity,
     market: view.market,
+    news: view.news,
     account: view.account,
     notice: view.notice,
     trading: {

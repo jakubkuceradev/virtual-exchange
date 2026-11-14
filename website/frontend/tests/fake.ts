@@ -38,7 +38,9 @@ type Pending = {
 };
 
 export function harness() {
+  /** Market and account sockets; news sockets are kept apart in `newsSockets`. */
   const sockets: FakeSocket[] = [];
+  const newsSockets: FakeSocket[] = [];
   const requests: Pending[] = [];
   let now = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -59,9 +61,9 @@ export function harness() {
     });
   const env: Environment = {
     rest: createRest('/exchange', fetcher),
-    openSocket: () => {
+    openSocket: (channels) => {
       const socket = new FakeSocket();
-      sockets.push(socket);
+      (channels.includes('news') ? newsSockets : sockets).push(socket);
       return socket;
     },
     setTimeout: (callback, ms) => {
@@ -87,6 +89,7 @@ export function harness() {
   return {
     session,
     sockets,
+    newsSockets,
     requests,
     flush,
     pendingTimers: () => timers.size,
