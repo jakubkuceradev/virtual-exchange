@@ -16,7 +16,7 @@ open. Both the exchange and website backend factories and health routes work.
 
 ```text
 exchange/             Independent Python package, tests, dependencies, and image
-website/backend/      Independent health-only API; competition still planned
+website/backend/      Independent API: health and the competition service
 website/frontend/     Browser experience; placeholder
 ```
 
@@ -63,14 +63,13 @@ conversion owner; balances and private observations are not public payloads.
 
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
-| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings. The health example is implemented; scoring and participant routes are not. |
+| Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings, implemented from `GET /accounts` and public market data ([competition](/competition.md)). |
 | Frontend | Browser interactions and website-backend responses | Participant views and competition presentation. Browser trading/data routing and framework remain undecided. |
 
 The website backend distinguishes public market feeds from authorized account
-balances, orders, and fills. Ranking calculations may need historical account
-observations; their retention, access policy, and recovery/export contracts need
-agreement in a later data slice. Exchange publishes facts, not competition
-scores or calendar baselines. Accounts continue without resets.
+balances, orders, and fills. Rankings use the exchange's `observe_accounts`
+listing and keep their own observations in the backend's store. Exchange
+publishes facts, not competition scores or calendar baselines. Accounts continue without resets.
 
 ## Intended flow
 

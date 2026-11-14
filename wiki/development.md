@@ -6,9 +6,8 @@ title: Development and Project Layout
 # Development and project layout
 
 The exchange has health and authenticated identity endpoints; the website
-backend has a health-only API. Each owns its dependencies, tests, and image.
-Funded REST and WebSocket trading are implemented; competition is deferred and
-the frontend remains a placeholder.
+backend has health and the competition service. Each owns its dependencies,
+tests, and image. Funded REST and WebSocket trading and rankings are implemented.
 
 ## Local setup
 
@@ -64,8 +63,40 @@ curl http://127.0.0.1:8001/health
 ```
 
 GET /health returns HTTP 200 and `{"status":"ok"}` without connecting to the
-exchange. Unknown routes and /leaderboard return 404; no competition results
-are fabricated. Ctrl+C stops the backend. Its initializer contains no functions.
+exchange. Ctrl+C stops the backend. Its initializer contains no functions.
+
+### Competition service
+
+Rules are in [competition](/competition.md). Without `WEBSITE_STATE_DIR` the
+competition routes return 503 `competition_unavailable`. To enable them:
+
+```sh
+export WEBSITE_STATE_DIR="$HOME/.local/state/pqc-website"   # any directory
+mkdir -p "$WEBSITE_STATE_DIR"
+uv run --project website/backend --locked python -m pqc_website.admin init-store
+export WEBSITE_EXCHANGE_TOKEN_FILE=/private/observer.token  # one line: the raw token
+export WEBSITE_EXCHANGE_URL=http://127.0.0.1:8000           # the default
+```
+
+The token needs only the exchange's `observe_accounts` grant
+([authentication](/authentication.md)); keep its file private. The backend
+never creates its store, so a missing volume fails startup instead of starting
+fresh rankings, and one process holds `website.lock`. Back up while running
+with `python -m pqc_website.admin backup-store DEST` (`VACUUM INTO`, one
+consistent copy). Restore by stopping the backend and copying a backup to
+`website.sqlite3` in an empty state directory.
+
+| Route | Result |
+| --- | --- |
+| GET /competition/leaderboard | public; `computed_at` and per period `start`, `end`, `participant_count`, `rows` of `rank`, `account_id`, `return_percent` |
+| GET /competition/standings?period= | public; frozen finished periods, newest first, with `local_start` |
+| GET /competition/standings/{period}/{local_start} | public; one period's frozen rows |
+| GET /competition/me | caller's exchange bearer token (checked with exchange `/identity`); `value`, `funding` and per period `return_percent`, `baseline_value`, `rank` or null with `unranked_reason`, `participant_count` and `neighbourhood` (two ranks either side) |
+| GET /competition/me/series | caller's `{at, value}` every 10 minutes for up to one year |
+
+Current rankings return 503 `rankings_unavailable` before a mark exists or
+when the last successful tick is over 120 s old. Frozen standings stay
+available. Values are decimal strings in the quote currency.
 
 ## Version baseline
 

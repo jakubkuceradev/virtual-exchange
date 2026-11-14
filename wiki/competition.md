@@ -1,5 +1,5 @@
 ---
-type: Requirements
+type: Decision
 title: Competition and Rankings
 ---
 
@@ -13,16 +13,37 @@ The competition runs continuously, with a continuous leaderboard and separate
 weekly, monthly, and yearly performance categories. Accounts continue without
 resets. Period rankings are intended to give new members a chance to compete.
 
-Portfolio value and risk-adjusted returns are candidate ranking measures.
-Neither a final formula nor a choice between them has been agreed.
+## Decided rules (implemented in `website/backend`)
 
-## Open questions
+- **Metric:** plain return V(now) / V(baseline) − 1; no deposits or
+  withdrawals exist. Risk-adjusted rankings may be added later as an extra
+  category.
+- **Valuation:** V = cash + asset × mark, exact Decimal (50 digits), rounded
+  only for transport. **Mark:** step-function time-weighted average over the
+  trailing 5 minutes of 10-second samples of the book mid; a one-sided or empty
+  book samples the last trade price; before any trade with no two-sided book
+  nothing is valued. A push during the last sample interval moves the mark by
+  at most 1/30 of its effect on the mid.
+- **Periods:** continuous (since creation) and calendar week (Monday), month
+  and year, starting at 00:00 `Europe/Prague`.
+- **Baselines:** V at the period start, valued with the last observation at
+  most 30 s before the boundary and the mark at the boundary. Accounts created
+  later start at their first valued observation with zero fills. Missing the
+  boundary (backend down, no mark) uses the first valued observation after it
+  and logs the gap.
+- **Eligibility:** `funded` accounts whose exchange `fill_count` rose during
+  the period (continuous: ever) with a positive baseline. Others are unranked
+  and uncounted, with reason `not_funded`, `no_fills` or `no_valuation`.
+- **Ranking:** by return, highest first; exact ties share a rank (1, 2, 2, 4).
+  Participants appear by account ID until registration adds names.
+- **Privacy:** public output is rank, account ID and return only.
+- **History:** at each period end the final standings are frozen and kept;
+  the caller's value is kept every 10 minutes for one year.
 
-- Valuation of positions, including assets without recent trades or enough
-  liquidity to sell a whole portfolio at the last price.
-- Performance formulas and treatment of participants joining during a period.
-- Period boundaries and timezone, including calendar versus rolling windows.
-- Eligibility rules other than bot exclusion (below).
+The backend polls `GET /accounts` (exchange `observe_accounts` grant) and the
+public book and trades every 10 s, writes each tick to its own SQLite store,
+and recomputes rankings on every tick. Operation and API:
+[development setup](/development.md#website-backend).
 
 ## Bot exclusion
 
@@ -33,10 +54,16 @@ scripts, hosted sandbox strategies on their accounts) is ranked normally.
   Rankings include only `funded` accounts; every `unlimited` account is excluded.
   An account with unlimited money has no meaningful return, so this rule
   holds regardless of who runs the account.
-- **Invariant:** every operator bot account is configured `unlimited`. All
-  planned bots are. If a funded operator bot is ever needed, add an explicit
-  operator-account flag to the exchange configuration and exclude on either
-  marker; never infer from names or tokens.
+- **Invariant:** every operator bot that provides liquidity (or otherwise
+  trades without a meaningful return) is configured `unlimited`. If a funded
+  operator bot ever needs excluding, add an explicit operator-account flag to
+  the exchange configuration and exclude on either marker; never infer from
+  names or tokens.
+- **House agents are ranked on purpose (2026-11-14).** Three operator-run
+  competitors (`Kai`, `Lena`, `Max`) give new participants opponents. They are
+  ordinary `funded` accounts with the participant default allocation, trade on
+  public data only, and rank like anyone else; no flag excludes them. Their
+  strategies live in the private market repository.
 - **Ownership:** the exchange publishes the policy as a fact and knows nothing
   of rankings; the website backend owns the eligibility rule. No separate
   website exclusion list, which could drift from exchange configuration.

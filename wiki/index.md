@@ -21,7 +21,7 @@ Project scope, development priorities, and requirements maintained here; the REA
 - [Exchange and bots](exchange-and-bots.md) — Fictional assets, price formation, API expectations, and bot rules.
 - [Exchange tradeoffs](exchange-tradeoffs.md) — Recommendations weighing first-slice realism against complexity; not yet agreed.
 - [Architecture principles](architecture-principles.md) — Agreed public boundaries and principles for independent change.
-- [Competition](competition.md) — Continuous accounts, period rankings, and undecided scoring rules.
+- [Competition](competition.md) — Return metric, time-weighted mark, Prague calendar periods, baselines, eligibility and frozen standings.
 
 ## System
 
