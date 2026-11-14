@@ -11,8 +11,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /var/lib/virtual-exchange \
+    && chown app:app /var/lib/virtual-exchange
 COPY --from=builder /app/.venv /app/.venv
+# All exchange state lives here; mount a persistent volume at this path.
+ENV EXCHANGE_STATE_DIR=/var/lib/virtual-exchange
+VOLUME /var/lib/virtual-exchange
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \

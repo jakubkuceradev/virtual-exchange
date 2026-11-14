@@ -143,7 +143,9 @@ relevant increment. /book, /balances and /accounts include the commit_id they de
 UUIDv4. Extra fields are rejected; client account selectors never establish identity.
 No final fills/status are included in the submission receipt. Commands may finish
 before the receipt arrives; a lost response can be reconciled with GET
-/orders/client:<uuid>. Repeated accepted UUIDs conflict even after cancellation.
+/orders/client:<uuid>. Repeated accepted UUIDs conflict even after cancellation, for as long as the
+order is retained; zero-fill terminal orders are pruned after 7 days (see
+[persistence](/persistence.md#retention)).
 A not-found lookup does not prove an earlier in-flight request cannot commit;
 retry the same UUID if needed, never silently substitute a new one.
 
