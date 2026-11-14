@@ -5,9 +5,11 @@ title: Exchange Persistence and Recovery
 
 # Exchange persistence and recovery
 
-Everything the exchange acknowledges is on disk before the response or any
-WebSocket observation leaves the process. A crash, container restart or VM
-reboot recovers the exact last committed state; only `process_id` and
+Everything the exchange acknowledges is committed to the store before the
+response or any WebSocket observation leaves the process. A process crash,
+container restart or clean VM reboot recovers the exact last committed state;
+an OS crash or power loss may lose the most recent commits (see
+[durability level](#durability-level)). Only `process_id` and
 process-scoped cursors and channel sequences start afresh. The exchange keeps
 state in one SQLite file, owned by `virtual_exchange.exchange.store.Store`.
 
@@ -17,7 +19,7 @@ Each command builds its private candidate as before. Then `_commit`:
 
 1. prepares the observation frames (encoding can fail, so it comes first);
 2. writes the candidate's changed orders, fills, trades, touched balances and
-   commit ID in one SQLite transaction (WAL, `synchronous=FULL`);
+   commit ID in one SQLite transaction (WAL, `synchronous=NORMAL`);
 3. applies the candidate to memory;
 4. delivers the frames, then returns the receipt.
 
@@ -26,6 +28,17 @@ memory. News follows the same order with a single-row insert. If a durable write
 fails, its outcome on disk is unknown: the exchange stops serving (503
 `trading_unavailable`) and the app sends itself SIGTERM, so the supervisor
 restarts it and recovery reads the truth. Memory never runs ahead of disk.
+
+## Durability level
+
+Decided 2026-11-14: `synchronous=NORMAL`. SQLite then syncs the WAL to disk only
+at checkpoints instead of on every commit. Committed transactions survive a
+process crash or SIGKILL because the WAL is already in the OS page cache; an OS
+crash or power loss can roll back the commits since the last checkpoint, though
+never corrupt the store. A real exchange would need `FULL`; for this practice
+exchange, losing the latest few seconds after a host failure is acceptable, and
+the bot quote churn made one fsync per command (about 17 per second) the
+dominant disk cost.
 
 ## Memory and history
 
