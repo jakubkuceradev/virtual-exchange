@@ -4,7 +4,13 @@
  * One LiveSession and one CompetitionFeed per app; both start on mount.
  * The token stays in memory; the feed sees it only while an identity is known.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { TradingSource } from '../trading/types.ts';
 import { CompetitionFeed } from './competition.ts';
 import { createRest } from './rest.ts';
@@ -25,6 +31,7 @@ export function createBrowserSession() {
     setTimeout: (callback, ms) => window.setTimeout(callback, ms),
     clearTimeout: (handle) => window.clearTimeout(handle as number),
     random: Math.random,
+    schedule,
     now: Date.now,
     randomBytes: (bytes) => crypto.getRandomValues(bytes),
   });
@@ -37,6 +44,11 @@ export function createBrowserFeed() {
     setTimeout: (callback, ms) => window.setTimeout(callback, ms),
     clearTimeout: (handle) => window.clearTimeout(handle as number),
   });
+}
+
+/** Frame-coalesced publishing; hidden tabs publish once when shown again. */
+function schedule(callback: () => void) {
+  requestAnimationFrame(() => callback());
 }
 
 export function useLiveSource(): TradingSource {
@@ -57,27 +69,23 @@ export function useLiveSource(): TradingSource {
   useEffect(() => {
     feed.setToken(accountId ? token.current : null);
   }, [feed, accountId]);
-  return {
-    kind: 'live',
-    identity: view.identity,
-    market: view.market,
-    news: view.news,
-    account: view.account,
-    notice: view.notice,
-    trading: {
-      busy: view.commands.busy,
-      unresolved: view.commands.unresolved,
-      feedback: view.commands.feedback,
+  const commands = view.commands;
+  const trading = useMemo(
+    () => ({
+      busy: commands.busy,
+      unresolved: commands.unresolved,
+      feedback: commands.feedback,
       checkUnresolved: session.checkUnresolved,
-      dismissUnresolved: view.commands.canDismiss
-        ? session.dismissUnresolved
-        : null,
+      dismissUnresolved: commands.canDismiss ? session.dismissUnresolved : null,
       clearFeedback: session.clearFeedback,
       submit: session.submit,
       cancel: session.cancel,
-    },
-    session: {
-      connect: (value) => {
+    }),
+    [session, commands],
+  );
+  const controls = useMemo(
+    () => ({
+      connect: (value: string) => {
         token.current = value;
         return session.connect(value);
       },
@@ -86,8 +94,22 @@ export function useLiveSource(): TradingSource {
         feed.setToken(null);
         session.disconnect();
       },
-    },
-    competition,
-    samples: null,
-  };
+    }),
+    [session, feed],
+  );
+  return useMemo(
+    () => ({
+      kind: 'live',
+      identity: view.identity,
+      market: view.market,
+      news: view.news,
+      account: view.account,
+      notice: view.notice,
+      trading,
+      session: controls,
+      competition,
+      samples: null,
+    }),
+    [view, trading, controls, competition],
+  );
 }

@@ -12,7 +12,7 @@ import { Nearby, unrankedMessage } from './Standings';
 import { cx, money, number, signed } from './styles';
 import { change } from './Trade';
 import { accountMessage } from './Trading';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import type { Decimal } from './trading/decimal.ts';
 import { cmp, isZero, mul, sub, toNumber } from './trading/decimal.ts';
 
@@ -25,10 +25,16 @@ const cents = (value: Decimal) => {
 
 /** @implemented-ui Account metrics and competition panels from the source. */
 export function Overview({ active }: { active: boolean }) {
-  const { kind, market, account, competition, identity } = useTrading();
-  const base = market.instrument?.baseAsset ?? '—';
-  const quote = market.instrument?.quoteAsset ?? '—';
-  const { lastPrice } = market;
+  const kind = useSource((s) => s.kind);
+  const instrument = useSource((s) => s.market.instrument);
+  const lastPrice = useSource((s) => s.market.lastPrice);
+  const stats = useSource((s) => s.market.stats);
+  const historyNote = useSource((s) => s.market.historyNote);
+  const account = useSource((s) => s.account);
+  const competition = useSource((s) => s.competition);
+  const identity = useSource((s) => s.identity);
+  const base = instrument?.baseAsset ?? '—';
+  const quote = instrument?.quoteAsset ?? '—';
   const ready = account.status === 'ready' || account.status === 'stale';
   const unavailable = ready ? '' : accountMessage(account, 'balances');
   const rankings = competition.status === 'ready' ? competition : null;
@@ -55,7 +61,7 @@ export function Overview({ active }: { active: boolean }) {
           ? '0'
           : null
         : mul(account.asset.total, lastPrice);
-  const movement = change(market);
+  const movement = change(stats, lastPrice);
   return (
     <section
       data-view="overview"
@@ -263,7 +269,7 @@ export function Overview({ active }: { active: boolean }) {
           </div>
           <div>
             <span className={cx('label')}>
-              {(market.instrument?.baseName ?? base).toUpperCase()}
+              {(instrument?.baseName ?? base).toUpperCase()}
             </span>
             <h3>
               {`${base} `}
@@ -292,7 +298,7 @@ export function Overview({ active }: { active: boolean }) {
                       'small',
                     )}
                   >
-                    {`${movement} · ${market.historyNote.toLowerCase()}`}
+                    {`${movement} · ${historyNote.toLowerCase()}`}
                   </span>
                 )}
               </>

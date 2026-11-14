@@ -9,12 +9,12 @@
 import { UnstyledButton } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { cx } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import type { Outcome, SampleCredentials } from './trading/types.ts';
 
 /** @mock-backend Dummy create/revoke/state. @implemented-ui Actual browser clipboard and manual-copy fallback. */
 export function Credentials() {
-  const { samples } = useTrading();
+  const samples = useSource((s) => s.samples);
   return samples ? (
     <SampleKey credentials={samples.credentials} />
   ) : (

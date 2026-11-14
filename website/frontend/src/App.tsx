@@ -12,11 +12,11 @@ import { badge, unread } from './news-format.ts';
 import { Overview } from './Overview';
 import { cx } from './styles';
 import { Trade } from './Trade';
-import { TradingProvider, useTrading } from './trading/context.tsx';
+import { TradingProvider, useSource } from './trading/context.tsx';
 import { useMockSource } from './trading/mock.ts';
 
 /** Build mode, never a participant-facing switch: `--mode mock` selects the demo. */
-const useSource =
+const useActiveSource =
   import.meta.env.MODE === 'mock' ? useMockSource : useLiveSource;
 
 const views = ['overview', 'trade', 'news', 'leaderboard', 'account'] as const;
@@ -26,7 +26,9 @@ function subscribe(onChange: () => void) {
 }
 /** @implemented-ui Navigation, shell, and header identity. */
 function Dashboard() {
-  const { identity, notice, news } = useTrading();
+  const identity = useSource((s) => s.identity);
+  const notice = useSource((s) => s.notice);
+  const news = useSource((s) => s.news);
   const name = identity?.name ?? 'Not connected';
   const hash = useSyncExternalStore(subscribe, () => location.hash);
   const [requested, anchor] = hash.slice(1).split('/');
@@ -175,7 +177,7 @@ function Dashboard() {
 /** @implemented-ui Installs the data source for the whole app. */
 export function App() {
   return (
-    <TradingProvider useSource={useSource}>
+    <TradingProvider useSource={useActiveSource}>
       <Dashboard />
     </TradingProvider>
   );

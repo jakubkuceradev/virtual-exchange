@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { countdown, newsTime } from './news-format.ts';
 import { cx } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 import type { NewsItem, NewsView } from './trading/types.ts';
 
 /** Current time, ticking each second only while `enabled`. */
@@ -62,7 +62,7 @@ function Item({ item, now }: { item: NewsItem; now: number }) {
 
 /** @implemented-ui Public news feed from the source. */
 export function News({ active }: { active: boolean }) {
-  const { news } = useTrading();
+  const news = useSource((s) => s.news);
   const upcoming = news.items.some(
     (item) => item.eventAt != null && item.eventAt > Date.now(),
   );

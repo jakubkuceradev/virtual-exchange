@@ -15,11 +15,12 @@ import {
   unrankedMessage,
 } from './Standings';
 import { cx, signed } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 
 /** @implemented-ui Period selection over source standings. */
 export function Leaderboard({ active }: { active: boolean }) {
-  const { competition, identity } = useTrading();
+  const competition = useSource((s) => s.competition);
+  const identity = useSource((s) => s.identity);
   const [selected, setSelected] = useState<Period>('continuous');
   const ready = competition.status === 'ready';
   const period = ready ? competition.periods[selected] : null;

@@ -8,7 +8,7 @@
 import { Connect } from './Connect';
 import { Credentials } from './Credentials';
 import { cx } from './styles';
-import { useTrading } from './trading/context.tsx';
+import { useSource } from './trading/context.tsx';
 
 /** @mock-frontend The mock's reviewed placeholder request; live mode shows the real route. */
 const examples = {
@@ -55,9 +55,11 @@ const examples = {
 
 /** @implemented-ui Profile from the source. */
 export function Account({ active }: { active: boolean }) {
-  const { identity, market, kind, session } = useTrading();
+  const identity = useSource((s) => s.identity);
+  const instrument = useSource((s) => s.market.instrument);
+  const kind = useSource((s) => s.kind);
+  const session = useSource((s) => s.session);
   const name = identity?.name ?? 'Not connected';
-  const instrument = market.instrument;
   const example = examples[kind];
   return (
     <section

@@ -18,8 +18,11 @@ These are developer-facing annotations, so the reviewed interface stays unclutte
 
 ## Data-source boundary
 
-Every view reads one `TradingSource` through `useTrading()`
-([src/trading/types.ts](src/trading/types.ts)). It carries identity, market
+Every view reads one `TradingSource`
+([src/trading/types.ts](src/trading/types.ts)) through `useSource(select)`,
+subscribing only to the slices it displays: a component re-renders when its
+selected value changes identity, so selectors return existing values, never
+newly built objects. It carries identity, market
 (instrument, book, last price, candles, statistics), account (cash/asset
 available and reserved, own orders and fills, or an explicit unavailable
 state), asynchronous order commands, `competition` — standings per period and
@@ -34,13 +37,14 @@ for chart geometry and percentages.
 | [trading/mock.ts](src/trading/mock.ts) / `useMockSource` | Mock source: adapts the [demo.ts](src/demo.ts) simulation and fixtures, converting cents/whole units to decimal strings at the boundary, and fixture standings/history into the `competition` shape. Selects the `no-trades` scenario. |
 | [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation (matching, self-trade prevention, reservations, settlement, cancellation, validation, dummy keys). Never production exchange logic. |
 | [fixtures.ts](src/fixtures.ts) | Fabricated observations: identity, balances, book, candles, performance, rankings. |
-| [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root; the build mode (`--mode mock` or live) picks it and it never switches at runtime. |
+| [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root behind a stable store; the build mode (`--mode mock` or live) picks it and it never switches at runtime. `useSource(select)` subscribes to one slice. |
 | [live/source.ts](src/live/source.ts) / `useLiveSource` | Live source over one `LiveSession` (same-origin `/exchange` proxy) and one `CompetitionFeed` (same-origin `/website` proxy to the website backend). |
 | [live/competition.ts](src/live/competition.ts) | Competition feed: polls the public leaderboard every 15 s and, while an identity is known, the caller's `/competition/me` (and their series every 10 minutes) with the in-memory token. Failure or standings older than 3 minutes give the unavailable state; late replies from an earlier token are dropped. |
-| [live/session.ts](src/live/session.ts) | Public (book, trades), public news (separate socket, so a news gap never marks the market stale) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. |
+| [live/session.ts](src/live/session.ts) | Public (book, trades), public news (separate socket, so a news gap never marks the market stale) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. Publishes at most one view per animation frame (none while the tab is hidden) and reuses unchanged slices. The market is tradable on the book snapshot alone; price history loads separately. |
 | Commands (in [live/session.ts](src/live/session.ts)) | Submit/cancel over REST: increment validation, one UUIDv4 per deliberate action, busy/unresolved/rejected outcomes from stable codes, lookup by client ID after an ambiguous reply (never an automatic resubmit), dismissal only after a resync also misses it, cancel races resolved by reading the order, coalesced balance refresh. |
 | [live/protocol.ts](src/live/protocol.ts) | Frame assembler: subscription baselines, fragments, book snapshot brackets, per-channel sequences, heartbeat gap checks, process identity. |
-| [live/market.ts](src/live/market.ts), [live/account.ts](src/live/account.ts) | Pure reducers: book levels, deduplicated trades, candles/statistics from executions only; versioned orders, deduplicated fills, commit-ordered balances. |
+| [live/market.ts](src/live/market.ts), [live/account.ts](src/live/account.ts) | Pure reducers: book levels; versioned orders, deduplicated fills, commit-ordered balances. |
+| [live/history.ts](src/live/history.ts) | Bounded price history: the last 60 one-minute candles and their statistics from actual executions, backfilled from at most five newest-first `/trades` pages and updated per live trade; reports where data starts when the backfill could not reach the window start. |
 | [live/news.ts](src/live/news.ts) | Pure feed rules: the `GET /news` page at the subscription baseline plus buffered channel items above it, newest first, deduplicated by `news_id`. |
 | [live/rest.ts](src/live/rest.ts), [live/wire.ts](src/live/wire.ts) | REST client with outcome classification and cursor paging; wire decoders. |
 
