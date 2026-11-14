@@ -92,12 +92,6 @@ client UUID is no longer reserved. Rankings need only fills and trades.
 
 ## Open items
 
-- **Website restart copy (TODO).** `website/frontend/src/live/session.ts`
-  (website stack, PR #13 → #16) tells users that balances were reset and earlier
-  orders were not carried over. With persistence that is wrong; replace it with
-  copy such as "The exchange restarted; your account was restored from its last
-  committed state." Whichever stack merges second makes the change and removes
-  this item.
 - **Account snapshot size.** `GET /account/snapshot` still lists every retained
   order of the account, now read from SQLite under the command lock. That keeps
   the website's recovery contract, but a bot account with days of cancelled

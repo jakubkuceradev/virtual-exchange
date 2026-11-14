@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import type { Order as DemoOrder, Feedback, SubmitResult } from '../demo.ts';
 import { createDemo } from '../demo.ts';
+import type { Period } from '../fixtures.ts';
 import {
   candles,
   participant,
@@ -17,12 +18,14 @@ import {
   snapshot,
 } from '../fixtures.ts';
 import type { Decimal } from './decimal.ts';
-import { fromUnits } from './decimal.ts';
+import { add, fromUnits, isZero, mul } from './decimal.ts';
 import type {
   Candle,
+  Competition,
   Instrument,
   Order,
   Outcome,
+  PeriodStanding,
   SampleCredentials,
   TradingSource,
 } from './types.ts';
@@ -82,6 +85,60 @@ function outcome(result: Feedback | SubmitResult): Outcome {
       ? { kind: 'rejected', message: result.error, field: result.field }
       : { kind: 'rejected', message: result.error };
   return { kind: 'accepted', message: result.message ?? '' };
+}
+
+/** Fixture standings in the shared shape; ranks are explicit. */
+function standing(period: Period): PeriodStanding {
+  const sample = periods[period];
+  return {
+    participantCount,
+    leaders: sample.leaders.map(([name, returnPercent], index) => ({
+      rank: index + 1,
+      name,
+      returnPercent,
+    })),
+    you: { rank: sample.rank, returnPercent: sample.profit, reason: null },
+    nearby: sample.nearby.map(([name, returnPercent], index) => ({
+      rank: sample.rank - 2 + index,
+      name,
+      returnPercent,
+    })),
+  };
+}
+
+/**
+ * @mock-backend Sample competition: fixture rankings and history.
+ * @mock-frontend Sample valuation: cash plus holdings at the latest execution price.
+ */
+function sampleCompetition(
+  empty: boolean,
+  cash: Decimal,
+  holdings: Decimal,
+  lastPrice: Decimal | null,
+): Competition {
+  if (empty) return { status: 'empty' };
+  const value =
+    lastPrice != null
+      ? add(cash, mul(holdings, lastPrice))
+      : isZero(holdings)
+        ? cash
+        : null;
+  return {
+    status: 'ready',
+    computedAt: null,
+    periods: {
+      continuous: standing('continuous'),
+      weekly: standing('weekly'),
+      monthly: standing('monthly'),
+      yearly: standing('yearly'),
+    },
+    personal: {
+      value,
+      baseline: cents(snapshot.baseline),
+      performance,
+      times: null,
+    },
+  };
 }
 
 /** @mock-backend Local controller and state adapter, not an authenticated service session. */
@@ -178,13 +235,12 @@ export function useMockSource(): TradingSource {
     },
     session: null,
     notice: null,
-    samples: {
+    competition: sampleCompetition(
       empty,
-      baseline: cents(snapshot.baseline),
-      performance,
-      periods,
-      participantCount,
-      credentials,
-    },
+      cents(state.cash),
+      whole(state.holdings),
+      state.lastPrice == null ? null : cents(state.lastPrice),
+    ),
+    samples: { credentials },
   };
 }

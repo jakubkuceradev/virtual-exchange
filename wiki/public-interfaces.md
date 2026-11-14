@@ -84,7 +84,7 @@ conversion owner; balances and private observations are not public payloads.
 | Boundary | Intended input | Intended output and ownership |
 | --- | --- | --- |
 | Backend | Website requests and published exchange observations | Participant-facing API, valuation, period baselines, eligibility, and continuous/weekly/monthly/yearly rankings, implemented from `GET /accounts` and public market data ([competition](/competition.md)). |
-| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state; website-backend responses for competition data (planned) | Four React/headless Mantine views over one data source: live exchange (default) or the fixture demo (`--mode mock`); independent approved HTML reference. |
+| Frontend | Browser interactions; exchange REST/WebSocket via a same-origin proxy for trading and account state; website-backend competition responses via a same-origin `/website` proxy | Four React/headless Mantine views over one data source: live exchange (default) or the fixture demo (`--mode mock`); independent approved HTML reference. |
 
 The website backend distinguishes public market feeds from authorized account
 balances, orders, and fills. Rankings use the exchange's `observe_accounts`

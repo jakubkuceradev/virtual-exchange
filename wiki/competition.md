@@ -45,6 +45,11 @@ public book and trades every 10 s, writes each tick to its own SQLite store,
 and recomputes rankings on every tick. Operation and API:
 [development setup](/development.md#website-backend).
 
+The live frontend reads these routes through its same-origin `/website` proxy:
+the Leaderboard is public, and a connected token adds the caller's rank,
+return, neighbourhood, value, profit and performance chart. Failed or stale
+data shows the existing unavailable states (`website/frontend/INTEGRATION.md`).
+
 ## Bot exclusion
 
 Operator bots never appear in rankings. Participants' own automation (API

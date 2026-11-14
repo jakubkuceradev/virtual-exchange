@@ -22,18 +22,21 @@ Every view reads one `TradingSource` through `useTrading()`
 ([src/trading/types.ts](src/trading/types.ts)). It carries identity, market
 (instrument, book, last price, candles, statistics), account (cash/asset
 available and reserved, own orders and fills, or an explicit unavailable
-state), asynchronous order commands, and `samples` — fixture data for features
-the exchange does not provide. Amounts are decimal strings handled by
+state), asynchronous order commands, `competition` — standings per period and
+the caller's own valuation and history, from the website backend in live mode —
+and `samples`, fixture data for features with no real source yet (API key
+management). Amounts are decimal strings handled by
 [src/trading/decimal.ts](src/trading/decimal.ts); floating point is used only
 for chart geometry and percentages.
 
 | Module | Status |
 | --- | --- |
-| [trading/mock.ts](src/trading/mock.ts) / `useMockSource` | Mock source: adapts the [demo.ts](src/demo.ts) simulation and fixtures, converting cents/whole units to decimal strings at the boundary. Selects the `no-trades` scenario. |
+| [trading/mock.ts](src/trading/mock.ts) / `useMockSource` | Mock source: adapts the [demo.ts](src/demo.ts) simulation and fixtures, converting cents/whole units to decimal strings at the boundary, and fixture standings/history into the `competition` shape. Selects the `no-trades` scenario. |
 | [demo.ts](src/demo.ts) / `createDemo` | Mock backend simulation (matching, self-trade prevention, reservations, settlement, cancellation, validation, dummy keys). Never production exchange logic. |
 | [fixtures.ts](src/fixtures.ts) | Fabricated observations: identity, balances, book, candles, performance, rankings. |
 | [trading/context.tsx](src/trading/context.tsx) | Installs one source at the root; the build mode (`--mode mock` or live) picks it and it never switches at runtime. |
-| [live/source.ts](src/live/source.ts) / `useLiveSource` | Live source over one `LiveSession`, through the same-origin `/exchange` proxy. |
+| [live/source.ts](src/live/source.ts) / `useLiveSource` | Live source over one `LiveSession` (same-origin `/exchange` proxy) and one `CompetitionFeed` (same-origin `/website` proxy to the website backend). |
+| [live/competition.ts](src/live/competition.ts) | Competition feed: polls the public leaderboard every 15 s and, while an identity is known, the caller's `/competition/me` (and their series every 10 minutes) with the in-memory token. Failure or standings older than 3 minutes give the unavailable state; late replies from an earlier token are dropped. |
 | [live/session.ts](src/live/session.ts) | Public (book, trades) and private (orders, fills) subscriptions; subscribe-then-fetch recovery; generation guards against late replies; bounded backoff; heartbeat deadline; process-reset handling; token in memory only. |
 | Commands (in [live/session.ts](src/live/session.ts)) | Submit/cancel over REST: increment validation, one UUIDv4 per deliberate action, busy/unresolved/rejected outcomes from stable codes, lookup by client ID after an ambiguous reply (never an automatic resubmit), dismissal only after a resync also misses it, cancel races resolved by reading the order, coalesced balance refresh. |
 | [live/protocol.ts](src/live/protocol.ts) | Frame assembler: subscription baselines, fragments, book snapshot brackets, per-channel sequences, heartbeat gap checks, process identity. |
@@ -45,16 +48,21 @@ for chart geometry and percentages.
 | Component | Source-backed | Sample-only (`samples`) |
 | --- | --- | --- |
 | `App` / `Dashboard` | Header identity, navigation, focus | — |
-| `Overview` | Available/reserved cash, holdings, market card | Valuation, profit, performance chart, rank and nearby standings |
+| `Overview` | Available/reserved cash, holdings, market card; valuation, profit, performance chart, rank and nearby standings (website backend) | Holdings-card valuation note (mock only) |
 | `Trade`, `OrderTicket`, `BookRows`, `OrderRows`, `FillRows` | Everything: instrument units, statistics, candles, book, balances, orders, fills, commands, disabled states | — |
 | `CandleChart` | Candles with computed scales and labels | — |
-| `PerformanceChart` | — | Fixed sample series and labels |
-| `Leaderboard`, `Nearby`, `RankingRows` | Unavailable state when `samples` is null | All rankings |
+| `PerformanceChart` | Live series with computed scale and dates | Fixed sample scale and labels (mock) |
+| `Leaderboard`, `Nearby`, `RankingRows` | Public standings; the caller's rank, return and neighbourhood when signed in; unranked reasons; unavailable state | — |
 | `Credentials` | Unavailable state when `samples` is null | Dummy key create/revoke |
 | `Account` | Identity, account ID, market, connection status | Example request and API notes are provisional |
 
 When `samples` is null (the live source), sample-only features render explicit
-unavailable states; they never fall back to fixtures.
+unavailable states; they never fall back to fixtures. Likewise a loading,
+failed or stale `competition` renders the existing unavailable states.
+
+Run the website backend with competition enabled for live rankings (see
+`wiki/development.md#competition-service`); set `WEBSITE_BACKEND_URL` for the
+dev/preview server when it is not `http://127.0.0.1:8001`.
 
 ## Replacing a mock
 

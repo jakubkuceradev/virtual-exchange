@@ -344,7 +344,7 @@ export class LiveSession {
         ? {
             kind: 'info',
             message:
-              'The exchange restarted before the unresolved order was confirmed. It was not carried over; nothing was resubmitted.',
+              'The exchange restarted before the unresolved order was confirmed. Nothing was resubmitted; your orders and fills show what the exchange committed.',
           }
         : this.commands.feedback,
     };
@@ -1025,7 +1025,7 @@ export class LiveSession {
     const parts: string[] = [];
     if (this.restartedAt !== null)
       parts.push(
-        `The development exchange restarted at ${new Date(this.restartedAt).toLocaleTimeString('en-GB')}. Balances were reset to their configured allocations and market history starts again; earlier orders were not carried over.`,
+        `The exchange restarted at ${new Date(this.restartedAt).toLocaleTimeString('en-GB')}. Your account was restored from its last committed state.`,
       );
     if (this.marketPhase === 'unavailable')
       parts.push('The exchange is unreachable. Retrying…');
