@@ -4,6 +4,8 @@
 
 * **Exchange durability level**: The store now uses `synchronous=NORMAL` instead of `FULL`. Process crashes still lose nothing; an OS crash or power loss may lose the most recent commits, accepted for this exchange to drop one fsync per command.
 
+* **Deployment images**: Added the `website` image (Caddy serving the live frontend and forwarding `/exchange/*`, including WebSockets, to `EXCHANGE_UPSTREAM` and `/website/*` to `WEBSITE_BACKEND_UPSTREAM`) and the GHCR publish workflow. The website-backend image provides a state directory owned by its user. The root Compose stack and the `container` CI job now cover all three images, including forwarding with the prefix stripped. The wiki records only the image contract; VM deployment lives in the operator's private infrastructure repository.
+
 ## 2026-11-10
 
 * **Market news (website)**: Added the public News view: live items newest first with tags, body and an event countdown, plus an unread badge on the navigation entry (tab memory only; backlog counts until opened). The live client subscribes to `news` on its own socket so feed failures never stale the market.

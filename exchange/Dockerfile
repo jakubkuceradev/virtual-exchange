@@ -7,6 +7,7 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable --no-cache
 
 FROM python:3.15.2-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/jakubkuceradev/virtual-exchange"
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

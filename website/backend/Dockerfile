@@ -7,11 +7,15 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable --no-cache
 
 FROM python:3.15.2-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/jakubkuceradev/virtual-exchange"
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN useradd --create-home --uid 10001 app
+# Competition state goes in a volume mounted here (WEBSITE_STATE_DIR, set by
+# the deployment); the directory exists so a fresh volume is owned by app.
+RUN useradd --create-home --uid 10001 app \
+    && install -d -o app -g app /var/lib/virtual-exchange-website
 COPY --from=builder /app/.venv /app/.venv
 USER app
 EXPOSE 8000
