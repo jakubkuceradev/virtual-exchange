@@ -1,6 +1,6 @@
-"""Validated, append-only market news retained for one exchange process."""
+"""Validate market news drafts; the store keeps published items."""
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -26,22 +26,11 @@ def _text(value: object, *, maximum: int) -> str:
     return value
 
 
-class NewsLog:
-    """Own news rules and publication order; know nothing of locks or transport.
-
-    The item count doubles as the public news channel sequence and as the
-    high watermark of the news list, so recovery can join them exactly.
-    """
+class NewsRules:
+    """Own news validation; know nothing of storage, locks or transport."""
 
     def __init__(self, *, instrument_ids: Collection[str]) -> None:
         self._instrument_ids = frozenset(instrument_ids)
-        self._items: list[NewsItem] = []
-
-    def __len__(self) -> int:
-        return len(self._items)
-
-    def items(self, start: int, stop: int) -> Sequence[NewsItem]:
-        return self._items[start:stop]
 
     def is_listed(self, instrument_id: object) -> bool:
         return instrument_id in self._instrument_ids
@@ -71,8 +60,3 @@ class NewsLog:
                 raise NewsRejected("invalid_request")
             event_at = event_at.replace(tzinfo=UTC)
         return NewsItem(str(uuid4()), headline, body, ids, event_at, datetime.now(UTC))
-
-    def append(self, item: NewsItem) -> int:
-        """Store a prepared item; return its channel sequence."""
-        self._items.append(item)
-        return len(self._items)

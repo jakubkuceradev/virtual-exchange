@@ -1,6 +1,12 @@
 # Wiki Update Log
 
+## 2026-11-14
+
+* **Exchange durability level**: The store now uses `synchronous=NORMAL` instead of `FULL`. Process crashes still lose nothing; an OS crash or power loss may lose the most recent commits, accepted for this exchange to drop one fsync per command.
+
 ## 2026-11-10
+
+* **Exchange persistence**: Acknowledged commands are now durable. Each commit is written in one SQLite transaction (WAL, `synchronous=FULL`) before memory changes and before observations or the response; a failed write stops the exchange for recovery. Memory holds only the live book, balances and counters; history lives in the store. Restart restores the exact committed state, including queue priority and client IDs, with a new `process_id` and continuing commit IDs and watermarks. Persisted state wins over configuration; instrument or funding changes refuse startup. Stores are created only by `python -m virtual_exchange.admin init-store`, and `EXCHANGE_STATE_DIR` is required with trading. The website restart copy is a recorded TODO.
 
 * **Market news (exchange)**: Added the operator-granted `publish_news` permission, `POST /news`, public newest-first `GET /news` with the standard cursor/high-watermark paging, and the public `news` WebSocket channel whose sequence equals the item count for exact recovery. News is in memory, creates no trading commit, accepts past `event_at`, and rejects whitespace-only headlines.
 

@@ -374,7 +374,7 @@ def test_heartbeat_and_subscription_timeout(api, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_restart_invalidates_cursors_and_stream_baselines(exchange):
+async def test_new_process_invalidates_cursors_and_stream_baselines(exchange):
     for _ in range(2):
         await exchange.submit_order(
             identity=identity(),

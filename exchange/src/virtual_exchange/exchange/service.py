@@ -1,10 +1,18 @@
-"""Complete funded operations with private candidate state and atomic publication."""
+"""Complete funded operations with private candidate state and durable commits.
+
+Each command builds a private candidate, writes its changes to the store in one
+transaction, then applies them to memory and only then delivers observations.
+Memory keeps the live book, balances and counters; history lives in the store.
+"""
 
 import asyncio
 import base64
 import hmac
 import json
-from collections.abc import Callable, Mapping, Sequence
+import logging
+import time
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -17,9 +25,15 @@ from virtual_exchange.exchange.configuration import (
     load_config,
 )
 from virtual_exchange.exchange.ledger import Ledger
-from virtual_exchange.exchange.matching import MatchingEngine
-from virtual_exchange.exchange.news import NewsLog, NewsRejected
+from virtual_exchange.exchange.matching import MatchingEngine, OrderNotFound
+from virtual_exchange.exchange.news import NewsRejected, NewsRules
 from virtual_exchange.exchange.observations import Subscription, frames
+from virtual_exchange.exchange.store import (
+    Recovered,
+    Store,
+    StoreConflict,
+    StoreError,
+)
 from virtual_exchange.types import (
     Acceptance,
     AccountSnapshot,
@@ -37,9 +51,12 @@ from virtual_exchange.types import (
     OrderBookSnapshot,
     OrderSide,
     OrderSnapshot,
+    OrderStatus,
     Permission,
     Trade,
 )
+
+_log = logging.getLogger(__name__)
 
 
 class TradingError(ValueError):
@@ -53,28 +70,19 @@ class TradingError(ValueError):
 
 @dataclass(slots=True)
 class _State:
+    """Committed in-memory state: the live book, balances and counters only."""
+
     engine: MatchingEngine
     ledger: Ledger
-    orders: dict[str, OrderSnapshot]
-    account_orders: dict[str, list[str]]
-    fills: dict[str, list[Fill]]
-    clients: dict[tuple[str, str], str]
     channels: dict[tuple[str, str], int]
     sequence: int = 0
 
     def apply(self, candidate: _Candidate) -> None:
-        """Absorb a validated candidate; only container updates remain."""
+        """Absorb a durably committed candidate; only container updates remain."""
         if candidate.base is not self or candidate.sequence != self.sequence + 1:
             raise RuntimeError("candidate does not extend the current state")
         self.engine.commit(candidate.engine)
         self.ledger = candidate.ledger
-        for order_id, snapshot in candidate.orders.items():
-            if order_id not in self.orders:
-                self.account_orders.setdefault(snapshot.account_id, []).append(order_id)
-            self.orders[order_id] = snapshot
-        for account, fills in candidate.fills.items():
-            self.fills.setdefault(account, []).extend(fills)
-        self.clients.update(candidate.clients)
         self.channels.update(candidate.channels)
         self.sequence = candidate.sequence
 
@@ -83,8 +91,8 @@ class _State:
 class _Candidate:
     """One command's private changes; discarded unless the whole command succeeds.
 
-    Retained history stays in the base state and is read through, so the cost of
-    a command depends on open orders, accounts and its own changes only.
+    History stays in the store, so the cost of a command depends on open orders,
+    accounts and its own changes only.
     """
 
     base: _State
@@ -93,16 +101,13 @@ class _Candidate:
     sequence: int
     orders: dict[str, OrderSnapshot] = field(default_factory=dict)
     fills: dict[str, list[Fill]] = field(default_factory=dict)
-    clients: dict[tuple[str, str], str] = field(default_factory=dict)
     channels: dict[tuple[str, str], int] = field(default_factory=dict)
     executions: tuple[Execution, ...] = ()
+    new_order_id: str | None = None
 
     @classmethod
     def of(cls, base: _State) -> _Candidate:
         return cls(base, base.engine.fork(), base.ledger.fork(), base.sequence + 1)
-
-    def order(self, order_id: str) -> OrderSnapshot:
-        return self.orders.get(order_id) or self.base.orders[order_id]
 
     def channel(self, key: tuple[str, str]) -> int:
         return self.channels.get(key, self.base.channels.get(key, 0))
@@ -117,8 +122,40 @@ class Exchange:
         instrument: Instrument,
         allocations: Mapping[str, tuple[Decimal, Decimal]],
         funding: Mapping[str, Funding] | None = None,
+        store: Store | None = None,
+        on_store_failure: Callable[[], None] | None = None,
     ) -> None:
-        """Accounts absent from funding are funded; only operators assign policy."""
+        """Recover persisted state, applying configuration only where it is new.
+
+        Accounts absent from funding are funded; only operators assign policy.
+        Without a store, state lives in an ephemeral in-memory database. A
+        failed durable write leaves the exchange unavailable and calls
+        on_store_failure, which should end the process so recovery can run.
+        The exchange owns the store and closes it if construction fails.
+        """
+        self._store = Store.memory() if store is None else store
+        try:
+            engine, ledger, recovered = self._recover(instrument, allocations, funding)
+        except BaseException:
+            self._store.close()
+            raise
+        self.process_id = str(uuid4())
+        self._subscribers: set[Subscription] = set()
+        self._cursor_key = uuid4().bytes
+        self._lock = asyncio.Lock()
+        self._news = NewsRules(instrument_ids={instrument.instrument_id})
+        self._news_count = recovered.news
+        self._failed = False
+        self._on_store_failure = on_store_failure
+        self._state = _State(engine, ledger, {}, recovered.commit_id)
+
+    def _recover(
+        self,
+        instrument: Instrument,
+        allocations: Mapping[str, tuple[Decimal, Decimal]],
+        funding: Mapping[str, Funding] | None,
+    ) -> tuple[MatchingEngine, Ledger, Recovered]:
+        """Validate configuration, apply it to the store and rebuild memory."""
         self.amounts = Amounts(instrument)
         values = {}
         for account, (cash, asset) in allocations.items():
@@ -133,33 +170,87 @@ class Exchange:
             not isinstance(policy, Funding) for policy in funding.values()
         ):
             raise OrderRejected("funding must assign a Funding to allocated accounts")
-        unlimited = frozenset(
-            account
-            for account, policy in funding.items()
-            if policy == Funding.UNLIMITED
+        recovered = self._store.adopt(
+            instrument,
+            {
+                account: (cash, asset, funding.get(account, Funding.FUNDED))
+                for account, (cash, asset) in values.items()
+            },
         )
-        self.process_id = str(uuid4())
-        self._subscribers: set[Subscription] = set()
-        self._cursor_key = uuid4().bytes
-        self._lock = asyncio.Lock()
-        self._news = NewsLog(instrument_ids={instrument.instrument_id})
-        self._state = _State(
-            MatchingEngine(instrument=instrument),
-            Ledger(values, unlimited),
-            {},
-            {account: [] for account in values},
-            {account: [] for account in values},
-            {},
-            {},
-        )
+        try:
+            engine = MatchingEngine(
+                instrument=instrument,
+                open_orders=recovered.open_orders,
+                sequence=recovered.commit_id,
+                executions=recovered.trades,
+            )
+            ledger = Ledger(
+                {
+                    account: (cash, asset)
+                    for account, (cash, asset, _) in recovered.accounts.items()
+                },
+                frozenset(
+                    account
+                    for account, (_, _, policy) in recovered.accounts.items()
+                    if policy == Funding.UNLIMITED
+                ),
+            )
+            # Holds are derived from open orders; this also rejects a store
+            # whose balances cannot support its resting orders.
+            ledger.reconcile(engine.list_open_orders(), self.amounts)
+        except (ValueError, ArithmeticError, RuntimeError, KeyError) as error:
+            raise StoreError("The exchange store is inconsistent") from error
+        return engine, ledger, recovered
 
     @classmethod
-    def from_config(cls, *, path: str | Path) -> Exchange:
+    def from_config(
+        cls,
+        *,
+        path: str | Path,
+        state_dir: str | Path,
+        on_store_failure: Callable[[], None] | None = None,
+    ) -> Exchange:
+        """Load configuration, then recover the store in state_dir."""
+        instrument, allocations, funding = load_config(path)
         try:
-            instrument, allocations, funding = load_config(path)
-            return cls(instrument=instrument, allocations=allocations, funding=funding)
+            return cls(
+                instrument=instrument,
+                allocations=allocations,
+                funding=funding,
+                store=Store.open(state_dir),
+                on_store_failure=on_store_failure,
+            )
+        except StoreConflict:
+            raise
         except ValueError, ArithmeticError, TypeError:
             raise TradingConfigurationError("Invalid trading configuration") from None
+
+    def close(self) -> None:
+        """Release the store; the instance must not be used afterwards."""
+        self._failed = True
+        self._store.close()
+
+    @asynccontextmanager
+    async def _locked(self) -> AsyncIterator[None]:
+        async with self._lock:
+            if self._failed:
+                raise TradingError("trading_unavailable", 503)
+            yield
+
+    def _durably(self, write: Callable[[], None]) -> None:
+        """Run a store write; any failure stops the exchange for recovery.
+
+        After a failed commit the outcome on disk is unknown, so memory must not
+        continue from either guess. Recovery on the next start reads the truth.
+        """
+        try:
+            write()
+        except Exception:
+            self._failed = True
+            _log.exception("exchange store write failed; trading stopped")
+            if self._on_store_failure is not None:
+                self._on_store_failure()
+            raise TradingError("trading_unavailable", 503) from None
 
     def _account(self, identity: AuthenticatedIdentity, permission: Permission) -> str:
         require_permission(identity=identity, permission=permission)
@@ -177,10 +268,11 @@ class Exchange:
             except ValueError, TypeError, AttributeError:
                 raise TradingError("invalid_client_id") from None
 
-    def _owned(self, state: _State, account: str, order_id: str) -> OrderSnapshot:
+    def _owned(self, account: str, order_id: str) -> OrderSnapshot:
         if order_id.startswith("client:"):
-            order_id = state.clients.get((account, order_id[7:]), "")
-        order = state.orders.get(order_id)
+            order = self._store.client_order(account, order_id[7:])
+        else:
+            order = self._store.order(order_id)
         if order is None or order.account_id != account:
             raise TradingError("order_not_found", 404)
         return order
@@ -188,7 +280,7 @@ class Exchange:
     async def submit_order(
         self, *, identity: AuthenticatedIdentity, order: LimitOrder
     ) -> Acceptance:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.TRADE)
             if order.instrument_id != self.amounts.instrument.instrument_id:
                 raise TradingError("invalid_instrument")
@@ -198,7 +290,7 @@ class Exchange:
             )
             if (
                 order.client_order_id is not None
-                and (account, order.client_order_id) in self._state.clients
+                and self._store.client_order(account, order.client_order_id) is not None
             ):
                 raise TradingError("duplicate_client_id", 409)
             candidate = _Candidate.of(self._state)
@@ -212,13 +304,10 @@ class Exchange:
                 time_in_force=order.time_in_force,
             )
             candidate.executions = result.executions
+            candidate.new_order_id = result.order.order_id
             for snapshot in (*result.changed_resting_orders, result.order):
                 candidate.orders[snapshot.order_id] = replace(
                     snapshot, commit_version=candidate.sequence
-                )
-            if order.client_order_id is not None:
-                candidate.clients[account, order.client_order_id] = (
-                    result.order.order_id
                 )
             for execution in result.executions:
                 maker = candidate.orders[execution.maker_order_id]
@@ -307,6 +396,22 @@ class Exchange:
     def _commit(self, candidate: _Candidate) -> None:
         # Encoding can fail and must happen before any authoritative mutation.
         bundles = self._prepare_observations(candidate)
+        # Durable before memory, memory before delivery: nothing awaits between
+        # them, so no observation or response describes an unwritten commit.
+        self._durably(
+            lambda: self._store.commit(
+                commit_id=candidate.sequence,
+                new_order_id=candidate.new_order_id,
+                orders=candidate.orders.values(),
+                fills=candidate.fills,
+                trades=tuple(_trade(e) for e in candidate.executions),
+                balances={
+                    account: candidate.ledger.total[account]
+                    for account in candidate.fills
+                },
+                at=time.time(),
+            )
+        )
         self._state.apply(candidate)
         self._deliver(bundles)
 
@@ -325,7 +430,7 @@ class Exchange:
     async def subscribe(
         self, *, channels: frozenset[str], identity: AuthenticatedIdentity | None = None
     ) -> Subscription:
-        async with self._lock:
+        async with self._locked():
             if not channels or not channels <= _CHANNELS:
                 raise TradingError("invalid_channels")
             account = None
@@ -370,7 +475,7 @@ class Exchange:
     ) -> dict[str, int]:
         """Report the last delivered sequence of each channel a subscriber sees."""
         return {
-            channel: len(self._news)
+            channel: self._news_count
             if channel == "news"
             else self._state.channels.get(
                 (channel, account if channel in {"orders", "fills"} else ""), 0
@@ -384,7 +489,7 @@ class Exchange:
 
     async def heartbeat(self, subscription: Subscription) -> None:
         """Queue current baselines behind every earlier committed update."""
-        async with self._lock:
+        async with self._locked():
             baselines = self._channel_baselines(
                 subscription.channels, subscription.account_id
             )
@@ -402,14 +507,18 @@ class Exchange:
     async def cancel_order(
         self, *, identity: AuthenticatedIdentity, order_id: str
     ) -> Cancellation:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.TRADE)
-            order = self._owned(self._state, account, order_id)
+            order = self._owned(account, order_id)
+            if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED):
+                raise TradingError("order_finished", 409)
             candidate = _Candidate.of(self._state)
             try:
                 result = candidate.engine.cancel(order_id=order.order_id)
-            except OrderRejected:
-                raise TradingError("order_finished", 409) from None
+            except OrderNotFound:
+                raise RuntimeError(
+                    "an open stored order is missing from the book"
+                ) from None
             candidate.orders[order.order_id] = replace(
                 result.order, commit_version=candidate.sequence
             )
@@ -445,26 +554,23 @@ class Exchange:
     async def get_account_snapshot(
         self, *, identity: AuthenticatedIdentity
     ) -> AccountSnapshot:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.READ)
             return AccountSnapshot(
                 self.process_id,
                 self._state.sequence,
                 self._balances(account),
-                tuple(
-                    self._state.orders[order_id]
-                    for order_id in self._state.account_orders[account]
-                ),
-                len(self._state.fills[account]),
+                self._store.account_orders(account),
+                self._store.counts(account)[1],
                 self._baselines(account),
             )
 
     async def get_order(
         self, *, identity: AuthenticatedIdentity, order_id: str
     ) -> OrderSnapshot:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.READ)
-            return self._owned(self._state, account, order_id)
+            return self._owned(account, order_id)
 
     def _page(
         self,
@@ -477,7 +583,11 @@ class Exchange:
         high_watermark: int | None = None,
         newest_first: bool = False,
     ) -> dict:
-        """Slice one page of insertion-ordered history in O(page size)."""
+        """Page insertion-ordered history in O(page size).
+
+        Offsets are ordinals: fetch(start, stop) returns records numbered in
+        (start, stop]. Pruned ordinals leave gaps, so a page may be short.
+        """
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise TradingError("invalid_limit")
         offset, high = 0, count if high_watermark is None else high_watermark
@@ -534,7 +644,7 @@ class Exchange:
         cursor: str | None = None,
         status: str | None = None,
     ) -> dict:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.READ)
             if status is not None and status not in {
                 "open",
@@ -543,12 +653,11 @@ class Exchange:
                 "cancelled",
             }:
                 raise TradingError("invalid_status")
-            ids = self._state.account_orders[account]
             page = self._page(
-                count=len(ids),
-                fetch=lambda start, stop: [
-                    self._state.orders[order_id] for order_id in ids[start:stop]
-                ],
+                count=self._store.counts(account)[0],
+                fetch=lambda start, stop: self._store.orders_between(
+                    account, start, stop
+                ),
                 scope=f"orders:{account}:{status}",
                 limit=limit,
                 cursor=cursor,
@@ -565,12 +674,13 @@ class Exchange:
         cursor: str | None = None,
         high_watermark: int | None = None,
     ) -> dict:
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.READ)
-            fills = self._state.fills[account]
             return self._page(
-                count=len(fills),
-                fetch=lambda start, stop: fills[start:stop],
+                count=self._store.counts(account)[1],
+                fetch=lambda start, stop: self._store.fills_between(
+                    account, start, stop
+                ),
                 scope=f"fills:{account}",
                 limit=limit,
                 cursor=cursor,
@@ -580,14 +690,14 @@ class Exchange:
     async def get_balances(
         self, *, identity: AuthenticatedIdentity
     ) -> tuple[Balance, ...]:
-        async with self._lock:
+        async with self._locked():
             return self._balances(self._account(identity, Permission.READ))
 
     async def get_balance_snapshot(
         self, *, identity: AuthenticatedIdentity
     ) -> tuple[int, tuple[Balance, ...]]:
         """Return balances with the commit they describe."""
-        async with self._lock:
+        async with self._locked():
             account = self._account(identity, Permission.READ)
             return self._state.sequence, self._balances(account)
 
@@ -596,18 +706,15 @@ class Exchange:
 
     async def get_order_book(self) -> OrderBookSnapshot:
         """Return the aggregated book; its sequence is the commit it describes."""
-        async with self._lock:
+        async with self._locked():
             book = self._state.engine.get_order_book()
             return replace(book, sequence=self._state.sequence)
 
     async def list_trades(self, *, limit: int = 100, cursor: str | None = None) -> dict:
-        async with self._lock:
-            engine = self._state.engine
+        async with self._locked():
             return self._page(
-                count=engine.count_executions(),
-                fetch=lambda start, stop: [
-                    _trade(e) for e in engine.list_executions(start=start, stop=stop)
-                ],
+                count=self._state.engine.count_executions(),
+                fetch=self._store.trades_between,
                 scope="trades:newest",
                 limit=limit,
                 cursor=cursor,
@@ -621,22 +728,24 @@ class Exchange:
 
         News creates no trading commit: its envelope names the latest commit.
         """
-        async with self._lock:
+        async with self._locked():
             require_permission(identity=identity, permission=Permission.PUBLISH_NEWS)
             try:
                 item = self._news.prepare(draft)
             except NewsRejected:
                 raise TradingError("invalid_request") from None
             # Encoding can fail and must happen before the item is stored.
+            sequence = self._news_count + 1
             bundle = frames(
                 process_id=self.process_id,
                 channel="news",
-                sequence=len(self._news) + 1,
+                sequence=sequence,
                 commit_id=self._state.sequence,
                 kind="update",
                 payload=(item,),
             )
-            self._news.append(item)
+            self._durably(lambda: self._store.append_news(sequence, item))
+            self._news_count = sequence
             self._deliver((("news", "", bundle),))
             return item
 
@@ -649,12 +758,12 @@ class Exchange:
         instrument_id: str | None = None,
     ) -> dict:
         """Page news newest first; the filter applies after slicing."""
-        async with self._lock:
+        async with self._locked():
             if instrument_id is not None and not self._news.is_listed(instrument_id):
                 raise TradingError("invalid_request")
             page = self._page(
-                count=len(self._news),
-                fetch=self._news.items,
+                count=self._news_count,
+                fetch=self._store.news_between,
                 scope=f"news:{instrument_id or '*'}",
                 limit=limit,
                 cursor=cursor,

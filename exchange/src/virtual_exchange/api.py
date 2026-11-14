@@ -1,12 +1,14 @@
 """App-owned exchange, authentication, and funded REST operations."""
 
 import os
+import signal
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Response
 
 from virtual_exchange.auth import Authenticator
 from virtual_exchange.exchange import Exchange
+from virtual_exchange.exchange.configuration import TradingConfigurationError
 from virtual_exchange.http_auth import identity_dependency, register_auth_errors
 from virtual_exchange.news_api import register_news
 from virtual_exchange.stream_api import register_streams
@@ -26,7 +28,15 @@ def create_app(
         exchange is None
         and (path := os.environ.get("EXCHANGE_TRADING_CONFIG")) is not None
     ):
-        exchange = Exchange.from_config(path=path)
+        state_dir = os.environ.get("EXCHANGE_STATE_DIR")
+        if not state_dir:
+            raise TradingConfigurationError(
+                "EXCHANGE_STATE_DIR must name the exchange store directory "
+                "when EXCHANGE_TRADING_CONFIG is set"
+            )
+        exchange = Exchange.from_config(
+            path=path, state_dir=state_dir, on_store_failure=_terminate
+        )
     authenticated_identity = identity_dependency(authenticator)
     app = FastAPI(
         title="Virtual Exchange",
@@ -57,3 +67,8 @@ def create_app(
     register_news(app, exchange=exchange, authenticator=authenticator)
     register_streams(app, exchange=exchange, authenticator=authenticator)
     return app
+
+
+def _terminate() -> None:
+    """Ask the server to shut down; the supervisor restarts it and recovery runs."""
+    os.kill(os.getpid(), signal.SIGTERM)

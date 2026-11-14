@@ -1,13 +1,13 @@
 ---
 type: Reference
-title: In-memory Matching Core
+title: Matching Core
 ---
 
-# In-memory matching core
+# Matching core
 
 `virtual_exchange.exchange.matching.MatchingEngine` implements the first trading
-milestone: one instrument, limit orders, sequential commands, and no persistent
-state. Its caller supplies orders whose funding eligibility is assumed. It is
+milestone: one instrument, limit orders and sequential commands. It holds only
+the live book; persistence belongs to its caller. Its caller supplies orders whose funding eligibility is assumed. It is
 an internal component, not a participant API for bypassing account checks.
 
 ```python
@@ -41,19 +41,21 @@ assert result.executions[0].price == Decimal("100")
   separate metadata and may repeat. This establishes no retry/deduplication rule.
   Future HTTP client IDs follow UUIDv4; this internal milestone accepts string tags.
 - `OrderRejected` leaves state unchanged.
-- `cancel(order_id=...)` cancels only the unfilled remainder. Cancelling a
-  terminal order raises `OrderRejected` without changing state. Unknown order
-  reads/cancellations raise `OrderNotFound`. Internal terminal snapshots remain
-  inspectable, without promising eventual public history retention.
+- `cancel(order_id=...)` cancels only the unfilled remainder. The engine keeps
+  only open orders: terminal and unknown orders raise `OrderNotFound` for reads
+  and cancellations, without changing state. Callers record history from each
+  `MatchingResult`; the exchange keeps it in its store. A book can be restored
+  from open orders in priority order with `sequence` and `executions` counters.
 - `MatchingResult` contains the command's order, changed resting orders, ordered
   executions. `Execution` identifies both
   maker and taker orders. These are internal facts for future settlement, not
   public market-data records.
-- `get_order`, `get_order_book`, and `list_executions` return immutable snapshots.
+- `get_order`, `get_order_book` and `list_open_orders` return immutable snapshots;
+  `count_executions` continues execution IDs.
   Book levels aggregate remaining quantities, bids descending and asks ascending;
   empty sides are empty tuples. Sequence advances once per effective command.
   Rejections and terminal cancellations do not advance it. Observation timestamps
-  are UTC; execution IDs are stable and unique within one engine instance.
+  are UTC; execution IDs are sequential and continue across restored books.
 - Snapshots retain original `quantity` and expose cumulative `filled_quantity`,
   `remaining_quantity`, `prevented_quantity`, and `cancelled_quantity` (explicit
   cancellation). These four quantities sum to the original quantity. Changed maker

@@ -7,8 +7,8 @@ title: Market News
 
 The exchange stores and distributes immutable news items; what they say is
 decided by an external publisher (the private market controller). Items live in
-the app-owned `Exchange` beside trades, in memory only: restart clears them with
-the process ID. Editing, deletion and persistence are out of scope.
+the app-owned `Exchange` beside trades and persist across restarts like them
+(see [persistence](/persistence.md)). Editing and deletion are out of scope.
 
 ## Publishing
 
