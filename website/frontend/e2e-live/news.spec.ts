@@ -52,8 +52,14 @@ test('signed-out participants see news live with an unread count and countdown',
   expect(Date.now() - latest).toBeLessThan(2000);
   await expect(nav.locator('#news-unread')).toHaveCount(0);
 
-  // Restart clears the feed: news is in memory only.
+  // The exchange persists news: after a restart the feed recovers the stored
+  // items once each, and new items still arrive live.
   await exchange.restart();
-  await expect(page.locator('#news-empty')).toContainText('No news yet');
+  await expect(items).toHaveCount(3);
+  await expect(items.first()).toContainText('Breaking: large holder moves QC');
+  await expect(items.nth(2)).toContainText('Session open');
+  await publish(base, { headline: 'Trading resumed' });
+  await expect(items).toHaveCount(4);
+  await expect(items.first()).toContainText('Trading resumed');
   expect(viewer.errors).toEqual([]);
 });

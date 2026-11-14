@@ -56,8 +56,8 @@ navigation entry counts items not yet displayed on the screen in this tab; the
 backlog at first load counts, opening the screen clears it, and the seen set is
 tab memory only. The live client uses its own `news` WebSocket next to the
 `book`/`trades` one, so feed recovery failures never mark the market stale; it
-recovers with the exact baseline/high-watermark rule above and clears the feed
-on an exchange restart. Code: `website/frontend/src/News.tsx`, `live/news.ts`;
+recovers with the exact baseline/high-watermark rule above. On an exchange
+restart it clears the feed and recovers the persisted items again. Code: `website/frontend/src/News.tsx`, `live/news.ts`;
 live acceptance in `e2e-live/news.spec.ts`.
 
 ## Implementation and verification
