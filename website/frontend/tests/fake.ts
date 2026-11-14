@@ -159,3 +159,24 @@ export const page = (data: unknown[], process = 'process-1') => ({
   next_cursor: null,
   high_watermark: data.length,
 });
+
+/** GET /candles reply: buckets plus the last trade they include. */
+export const candles = (
+  data: unknown[] = [],
+  through: string | null = null,
+  process = 'process-1',
+) => ({
+  process_id: process,
+  commit_id: 1,
+  granularity: 60,
+  through_trade_id: through,
+  data,
+});
+export const candleRecord = (
+  start: string,
+  open: string,
+  high: string,
+  low: string,
+  close: string,
+  volume: string,
+) => ({ start, open, high, low, close, volume });

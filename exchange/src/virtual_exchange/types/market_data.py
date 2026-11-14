@@ -45,6 +45,21 @@ class Trade:
 
 
 @dataclass(frozen=True, slots=True)
+class Candle:
+    """Open, high, low, close and base volume of actual executions in one bucket.
+
+    start is the bucket's inclusive start; buckets without executions are omitted.
+    """
+
+    start: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class Ticker:
     """Capture current quotes and the last trade, when available."""
 

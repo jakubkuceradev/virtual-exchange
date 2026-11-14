@@ -6,6 +6,7 @@ from virtual_exchange.types.auth import (
 )
 from virtual_exchange.types.market_data import (
     BookLevel,
+    Candle,
     OrderBookSnapshot,
     Ticker,
     Trade,
@@ -47,6 +48,7 @@ __all__ = [
     "AuthenticatedIdentity",
     "Balance",
     "BookLevel",
+    "Candle",
     "Execution",
     "Fill",
     "Funding",

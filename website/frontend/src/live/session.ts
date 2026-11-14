@@ -34,7 +34,7 @@ import {
   orderRows,
   snapshot,
 } from './account.ts';
-import { MarketHistory, windowStart } from './history.ts';
+import { MarketHistory } from './history.ts';
 import type { BookState } from './market.ts';
 import { applyLevels, bookFromSnapshot, toBook } from './market.ts';
 import type { Buffered, Feed } from './news.ts';
@@ -45,6 +45,7 @@ import type { Rest } from './rest.ts';
 import { RestFailure } from './rest.ts';
 import type { WireInstrument, WireOrder, WireTrade } from './wire.ts';
 import {
+  candleSnapshot,
   instrument as decodeInstrument,
   order as decodeOrder,
   trade as decodeTrade,
@@ -83,9 +84,9 @@ export type Environment = {
 export const HEARTBEAT_DEADLINE_MS = 25_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 15_000;
-/** Newest-first trade pages fetched to fill the price history window. */
-export const HISTORY_PAGE_LIMIT = 5;
-const HISTORY_PAGE_SIZE = 1000;
+/** Trades fetched to bridge the candle snapshot to the stream. */
+export const BRIDGE_PAGE_LIMIT = 3;
+const BRIDGE_PAGE_SIZE = 200;
 
 export type CommandState = {
   busy: boolean;
@@ -168,13 +169,9 @@ class Link {
   alive = true;
   socket: SocketLike | null = null;
   watchdog: unknown = null;
+  /** Candle snapshot requested when the link starts; settles once installed. */
+  candles: Promise<void> | null = null;
 }
-
-const clock = (epoch: number) =>
-  new Date(epoch).toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 
 const initials = (name: string) =>
   name
@@ -464,28 +461,15 @@ export class LiveSession {
     );
   }
 
-  private async startPublic() {
+  /**
+   * Instrument, candle snapshot and subscription start together: none waits
+   * for another, so the chart needs one round trip after the page loads.
+   */
+  private startPublic() {
     this.endPublic();
     const link = new Link();
     this.publicLink = link;
     this.bufferedTrades = [];
-    try {
-      if (!this.instrument) {
-        const raw = object(
-          await this.env.rest.get('/instruments'),
-          'instruments',
-        );
-        if (!link.alive) return;
-        if (!this.sameProcess(text(raw.process_id))) return;
-        const first = list(raw.data)[0];
-        if (!first) throw new Error('No instrument');
-        this.instrument = decodeInstrument(first);
-        this.emit();
-      }
-    } catch {
-      if (link.alive) this.retryPublic();
-      return;
-    }
     this.open(
       link,
       ['book', 'trades'],
@@ -493,6 +477,53 @@ export class LiveSession {
       (event) => this.onPublic(link, event),
       () => this.retryPublic(),
     );
+    link.candles = this.loadCandles(link);
+    if (!this.instrument) void this.loadInstrument(link);
+  }
+
+  private async loadInstrument(link: Link) {
+    try {
+      const raw = object(
+        await this.env.rest.get('/instruments'),
+        'instruments',
+      );
+      if (!link.alive || !this.sameProcess(text(raw.process_id))) return;
+      const first = list(raw.data)[0];
+      if (!first) throw new Error('No instrument');
+      this.instrument = decodeInstrument(first);
+      this.marketReady();
+      this.emit();
+    } catch {
+      if (link.alive) this.retryPublic();
+    }
+  }
+
+  /**
+   * Replace the price history with a fresh candle snapshot, retrying with
+   * backoff. Runs only while live trades are buffered (not yet synced), so the
+   * snapshot plus the bridge and buffer reproduce every execution exactly once.
+   */
+  private async loadCandles(link: Link) {
+    for (let attempt = 0; link.alive; attempt++) {
+      try {
+        const snapshot = candleSnapshot(await this.env.rest.get('/candles'));
+        if (!link.alive || !this.sameProcess(snapshot.processId)) return;
+        this.history = MarketHistory.fromCandles(
+          snapshot.candles,
+          snapshot.throughTradeId,
+        );
+        this.historyPhase = 'ready';
+        this.emit();
+        return;
+      } catch {
+        if (!link.alive) return;
+        if (this.historyPhase !== 'stale') this.historyPhase = 'unavailable';
+        this.emit();
+      }
+      await new Promise<void>((resolve) => {
+        this.env.setTimeout(() => resolve(), this.backoff(attempt));
+      });
+    }
   }
 
   private onPublic(link: Link, event: StreamEvent) {
@@ -531,31 +562,27 @@ export class LiveSession {
   }
 
   /**
-   * Fill the price history window from newest-first trade pages, stopping at the
-   * window start, at trades already applied, at the beginning of history, or at
-   * the page limit. A failed page is retried alone; loaded pages are kept.
+   * After the subscription is confirmed, bridge the candle snapshot to the
+   * stream with the few trades executed in between (newest first, stopping at
+   * the snapshot's last trade), then apply buffered live trades.
    */
   private async syncHistory(link: Link) {
-    const known = this.history.appliedThrough !== null;
-    const collected: WireTrade[] = [];
+    await link.candles;
+    if (!link.alive) return;
+    const bridged: WireTrade[] = [];
+    let reached = false;
     let cursor: string | null = null;
-    let target: number | null = null;
-    let reachedKnown = false;
-    let complete = false;
-    let attempt = 0;
-    for (let pages = 0; pages < HISTORY_PAGE_LIMIT; ) {
+    for (let pages = 0, attempt = 0; pages < BRIDGE_PAGE_LIMIT; ) {
       let page: Awaited<ReturnType<Rest['page']>>;
       let trades: WireTrade[];
       try {
         page = await this.env.rest.page('/trades', null, {
-          limit: String(HISTORY_PAGE_SIZE),
+          limit: String(BRIDGE_PAGE_SIZE),
           ...(cursor ? { cursor } : {}),
         });
         trades = page.data.map(decodeTrade);
       } catch {
         if (!link.alive) return;
-        if (this.historyPhase !== 'stale') this.historyPhase = 'unavailable';
-        this.emit();
         await new Promise<void>((resolve) => {
           this.env.setTimeout(() => resolve(), this.backoff(attempt++));
         });
@@ -563,30 +590,21 @@ export class LiveSession {
         continue;
       }
       if (!link.alive || !this.sameProcess(page.processId)) return;
-      attempt = 0;
       pages++;
-      collected.push(...trades);
-      const newest = trades[0];
-      if (target === null && newest) target = windowStart(newest.executedAt);
+      bridged.push(...trades);
       const oldest = trades.at(-1);
-      if (known && oldest && this.history.has(oldest)) {
-        reachedKnown = true;
-        complete = true;
-        break;
-      }
-      if (
-        !page.nextCursor ||
-        !oldest ||
-        (target !== null && oldest.executedAt < target)
-      ) {
-        complete = true;
+      if (!oldest || !page.nextCursor || this.history.has(oldest)) {
+        reached = true;
         break;
       }
       cursor = page.nextCursor;
     }
-    // A resync that could not reach applied trades would leave a gap: start over.
-    if (known && !reachedKnown) this.history = new MarketHistory();
-    this.history.load(collected, complete);
+    // Too many trades in between: a snapshot taken now, while subscribed and
+    // buffering, leaves no gap.
+    if (!reached) {
+      await this.loadCandles(link);
+      if (!link.alive) return;
+    } else this.history.load(bridged);
     for (const entry of this.bufferedTrades) this.history.add(entry);
     this.bufferedTrades = [];
     this.historySynced = true;
@@ -1201,7 +1219,6 @@ export class LiveSession {
   private compose(): LiveView {
     const history = this.history;
     history.advance(this.env.now() - this.clockSkew);
-    const coverage = history.coverageStart;
     const instrument = this.memo.instrument.get([this.instrument], () =>
       this.instrument
         ? {
@@ -1225,10 +1242,8 @@ export class LiveSession {
         history,
         history.version,
         this.historyPhase,
-        coverage,
       ],
       (): MarketView => {
-        const since = coverage === null ? null : clock(coverage);
         return {
           status: this.marketPhase,
           instrument,
@@ -1237,8 +1252,8 @@ export class LiveSession {
           chart: history.chart,
           stats: history.stats,
           historyStatus: this.historyPhase,
-          statsLabel: since === null ? '1H' : `SINCE ${since}`,
-          historyNote: since === null ? 'Last 60 minutes' : `Since ${since}`,
+          statsLabel: '1H',
+          historyNote: 'Last 60 minutes',
         };
       },
     );

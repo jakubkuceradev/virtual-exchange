@@ -11,6 +11,15 @@ import { trade } from '../src/live/wire.ts';
 import { tradeRecord } from './frames.ts';
 
 const decode = (records: unknown[]) => records.map(trade);
+function volumeOf(trades: readonly WireTrade[], start: number) {
+  const fresh = new MarketHistory();
+  fresh.load(
+    trades.filter(
+      (entry) => Math.floor(entry.executedAt / 60_000) * 60_000 === start,
+    ),
+  );
+  return fresh.stats?.volume ?? '0';
+}
 const at = (minute: number, second = 0) =>
   `2026-11-07T12:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+00:00`;
 
@@ -30,7 +39,6 @@ test('candles use actual executions only and omit empty buckets', () => {
       tradeRecord('2', '102.00', '1', at(0, 40)),
       tradeRecord('1', '100.00', '1', at(0, 5)),
     ]),
-    true,
   );
   assert.equal(history.chart.interval, HISTORY_INTERVAL_MS);
   assert.deepEqual(
@@ -52,12 +60,11 @@ test('candles use actual executions only and omit empty buckets', () => {
     volume: '4',
   });
   assert.equal(history.lastPrice, '98.00');
-  assert.equal(history.coverageStart, null);
 });
 
 test('an empty history has no candles, statistics, or price', () => {
   const history = new MarketHistory();
-  history.load([], true);
+  history.load([]);
   assert.deepEqual(history.chart.candles, []);
   assert.equal(history.stats, null);
   assert.equal(history.lastPrice, null);
@@ -70,7 +77,6 @@ test('REST pages and stream events deduplicate by trade ID', () => {
       tradeRecord('2', '101.00', '1', at(0, 2)),
       tradeRecord('1', '100.00', '2', at(0, 1)),
     ]),
-    true,
   );
   assert.equal(
     history.add(trade(tradeRecord('2', '101.00', '1', at(0, 2)))),
@@ -86,7 +92,7 @@ test('REST pages and stream events deduplicate by trade ID', () => {
 
 test('derived objects keep their identity until a visible change', () => {
   const history = new MarketHistory();
-  history.load(decode([tradeRecord('1', '100.00', '1', at(0))]), true);
+  history.load(decode([tradeRecord('1', '100.00', '1', at(0))]));
   const { chart, stats } = history;
   assert.equal(history.chart, chart);
   assert.equal(history.stats, stats);
@@ -99,7 +105,7 @@ test('derived objects keep their identity until a visible change', () => {
 test('the window keeps the last 60 one-minute buckets as time advances', () => {
   const history = new MarketHistory();
   const base = Date.parse(at(0));
-  history.load(decode([tradeRecord('1', '100.00', '1', at(0))]), true);
+  history.load(decode([tradeRecord('1', '100.00', '1', at(0))]));
   // 59 minutes later the first bucket is still the oldest in the window.
   assert.equal(history.advance(base + 59 * 60_000), false);
   assert.equal(history.chart.candles.length, 1);
@@ -110,37 +116,50 @@ test('the window keeps the last 60 one-minute buckets as time advances', () => {
   assert.equal(history.lastPrice, '100.00');
 });
 
-test('an incomplete backfill drops the partial bucket and reports coverage', () => {
-  const history = new MarketHistory();
-  history.load(
-    decode([
-      tradeRecord('3', '102.00', '1', at(30, 0)),
-      tradeRecord('2', '101.00', '1', at(10, 40)),
-      tradeRecord('1', '100.00', '1', at(10, 20)),
-    ]),
-    false,
+test('a candle snapshot extended by later trades equals building from trades', () => {
+  const oldestFirst = [...recorded].reverse();
+  const split = Math.floor(oldestFirst.length / 2);
+  const before = new MarketHistory();
+  before.load(oldestFirst.slice(0, split));
+  // The exchange's snapshot: the same buckets, with volume, through trade `split`.
+  const snapshot = MarketHistory.fromCandles(
+    before.chart.candles.map((candle) => ({
+      ...candle,
+      volume: volumeOf(oldestFirst.slice(0, split), candle.start),
+    })),
+    oldestFirst[split - 1]?.tradeId ?? null,
   );
-  assert.deepEqual(
-    history.chart.candles.map((candle) => candle.close),
-    ['102.00'],
+  // Bridge pages overlap the snapshot; the watermark skips what it includes.
+  snapshot.load(oldestFirst.slice(split - 20, split + 20));
+  for (const entry of oldestFirst.slice(split)) snapshot.add(entry);
+  const fresh = new MarketHistory();
+  fresh.load(recorded);
+  assert.deepEqual(snapshot.chart, fresh.chart);
+  assert.deepEqual(snapshot.stats, fresh.stats);
+  assert.equal(snapshot.lastPrice, fresh.lastPrice);
+});
+
+test('a snapshot without trades is empty and accepts the first trade', () => {
+  const history = MarketHistory.fromCandles([], null);
+  assert.deepEqual(history.chart.candles, []);
+  assert.equal(
+    history.add(trade(tradeRecord('1', '100.00', '1', at(0)))),
+    true,
   );
-  assert.equal(history.coverageStart, Date.parse(at(11)));
-  // Once the window start passes the coverage start, the whole window is real.
-  history.advance(Date.parse(at(11)) + 59 * 60_000);
-  assert.equal(history.coverageStart, null);
+  assert.equal(history.lastPrice, '100.00');
 });
 
 test('incremental updates equal a fresh load on recorded production trades', () => {
   const oldestFirst = [...recorded].reverse();
   const split = Math.floor(oldestFirst.length / 3);
   const incremental = new MarketHistory();
-  incremental.load(oldestFirst.slice(0, split).reverse(), true);
+  incremental.load(oldestFirst.slice(0, split).reverse());
   for (const entry of oldestFirst.slice(split)) incremental.add(entry);
   // Replays and overlaps change nothing.
   for (const entry of oldestFirst.slice(split - 50, split + 50))
     incremental.add(entry);
   const fresh = new MarketHistory();
-  fresh.load(recorded, true);
+  fresh.load(recorded);
   assert.deepEqual(incremental.chart, fresh.chart);
   assert.deepEqual(incremental.stats, fresh.stats);
   assert.equal(incremental.lastPrice, recorded[0]?.price);

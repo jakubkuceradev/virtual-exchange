@@ -158,6 +158,42 @@ export function news(value: unknown): NewsItem {
   };
 }
 
+export type WireCandle = {
+  /** Bucket start, epoch milliseconds. */
+  start: number;
+  open: Decimal;
+  high: Decimal;
+  low: Decimal;
+  close: Decimal;
+  volume: Decimal;
+};
+function candle(value: unknown): WireCandle {
+  const raw = object(value, 'candle');
+  return {
+    start: time(raw.start),
+    open: decimal(raw.open),
+    high: decimal(raw.high),
+    low: decimal(raw.low),
+    close: decimal(raw.close),
+    volume: decimal(raw.volume),
+  };
+}
+
+/** GET /candles: recent buckets and the last trade they include. */
+export function candleSnapshot(value: unknown): {
+  processId: string;
+  throughTradeId: string | null;
+  candles: WireCandle[];
+} {
+  const raw = object(value, 'candles');
+  return {
+    processId: text(raw.process_id),
+    throughTradeId:
+      raw.through_trade_id == null ? null : text(raw.through_trade_id),
+    candles: list(raw.data, 'candles').map(candle),
+  };
+}
+
 export type WireLevel = { price: Decimal; quantity: Decimal };
 export function level(value: unknown): WireLevel {
   const raw = object(value, 'level');

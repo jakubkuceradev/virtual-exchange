@@ -3,7 +3,7 @@ import test from 'node:test';
 import { prepend, recover } from '../src/live/news.ts';
 import { HEARTBEAT_DEADLINE_MS } from '../src/live/session.ts';
 import { badge, countdown, unread } from '../src/news-format.ts';
-import { harness, instruments, page } from './fake.ts';
+import { candles, harness, instruments, page } from './fake.ts';
 import { bookSnapshot, frame, subscribed } from './frames.ts';
 
 const item = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -88,6 +88,7 @@ test('a news gap resubscribes the feed without touching the market', async () =>
   market?.open();
   market?.deliver(subscribed({ book: 0, trades: 0 }));
   market?.deliver(...bookSnapshot(0, [], []));
+  await h.reply('/candles', candles());
   await h.reply('/trades', page([]));
   const socket = await newsReady(h);
   socket.deliver(frame('news', 9, 'update', [item('skipped')]));

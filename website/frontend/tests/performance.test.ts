@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { harness, instruments, page } from './fake.ts';
+import { candleRecord, candles, harness, instruments, page } from './fake.ts';
 import {
   bookSnapshot,
   fillRecord,
@@ -37,7 +37,22 @@ test('a burst of book and trade updates stays within budget', async () => {
       Array.from({ length: 20 }, (_, i) => [`${101 + i * 0.01}`, '5']),
     ),
   );
-  await h.reply('/trades', page(recorded));
+  // A full window: 60 one-minute candles ending at the newest recorded trade.
+  const newestAt = Date.parse(recorded[0]?.executed_at ?? '');
+  const bars = Array.from({ length: 60 }, (_, index) =>
+    candleRecord(
+      new Date(
+        Math.floor(newestAt / 60_000) * 60_000 - (59 - index) * 60_000,
+      ).toISOString(),
+      '100.00',
+      '101.00',
+      '99.00',
+      '100.50',
+      '25',
+    ),
+  );
+  await h.reply('/candles', candles(bars, recorded[0]?.trade_id ?? null));
+  await h.reply('/trades', page([]));
 
   void h.session.connect('alice-token');
   await h.reply('/identity', { account_id: 'alice', permissions: ['read'] });

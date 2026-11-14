@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  BRIDGE_PAGE_LIMIT,
   HEARTBEAT_DEADLINE_MS,
-  HISTORY_PAGE_LIMIT,
 } from '../src/live/session.ts';
-import { harness, instruments, page } from './fake.ts';
+import { candleRecord, candles, harness, instruments, page } from './fake.ts';
 import {
   bookSnapshot,
   fillRecord,
@@ -25,6 +25,7 @@ async function publicReady(h: ReturnType<typeof harness>) {
   ]);
   socket.deliver(subscribed({ book: 0, trades: 0 }));
   socket.deliver(...bookSnapshot(0, [['99.00', '1']], [['101.00', '2']]));
+  await h.reply('/candles', candles());
   await h.reply('/trades', page([]));
   assert.equal(h.session.getView().market.status, 'ready');
   return socket;
@@ -55,7 +56,7 @@ async function connected(
   return h.sockets.at(-1);
 }
 
-test('trades buffered during REST recovery merge without duplicates', async () => {
+test('the candle snapshot, bridge, and buffered trades count each execution once', async () => {
   const h = harness();
   h.session.start();
   await h.reply('/instruments', instruments());
@@ -64,7 +65,7 @@ test('trades buffered during REST recovery merge without duplicates', async () =
   socket.open();
   socket.deliver(subscribed({ book: 0, trades: 4 }));
   socket.deliver(...bookSnapshot(0, [], []));
-  // An event arrives before the REST history reply and overlaps it.
+  // A live event arrives before the history replies and overlaps the bridge.
   socket.deliver(
     frame('trades', 5, 'update', [tradeRecord('5', '102.00', '1')]),
   );
@@ -72,9 +73,26 @@ test('trades buffered during REST recovery merge without duplicates', async () =
   assert.equal(h.session.getView().market.status, 'ready');
   assert.equal(h.session.getView().market.historyStatus, 'loading');
   await h.reply(
+    '/candles',
+    candles(
+      [
+        candleRecord(
+          '2026-11-07T12:00:00+00:00',
+          '100.00',
+          '100.00',
+          '100.00',
+          '100.00',
+          '2',
+        ),
+      ],
+      '4',
+    ),
+  );
+  const bridge = await h.reply(
     '/trades',
     page([tradeRecord('5', '102.00', '1'), tradeRecord('4', '100.00', '2')]),
   );
+  assert.match(bridge.path, /limit=200/);
   const { market } = h.session.getView();
   assert.equal(market.status, 'ready');
   assert.equal(market.lastPrice, '102.00');
@@ -94,6 +112,7 @@ test('a sequence gap marks the market stale and resubscribes after backoff', asy
   next?.open();
   next?.deliver(subscribed({ book: 3, trades: 0 }));
   next?.deliver(...bookSnapshot(3, [], [['105.00', '1']]));
+  await h.reply('/candles', candles());
   await h.reply('/trades', page([]));
   assert.equal(h.session.getView().market.status, 'ready');
   assert.equal(h.session.getView().market.book?.asks[0]?.price, '105');
@@ -289,7 +308,9 @@ test('an unreachable exchange is reported, never replaced with fixtures', async 
   assert.match(view.notice ?? '', /unreachable/);
   await h.advance(1000);
   await h.reply('/instruments', instruments());
-  assert.equal(h.sockets.length, 1);
+  // The socket opens with the instrument request: one per attempt, never more.
+  assert.equal(h.sockets.length, 2);
+  assert.equal(h.sockets[0]?.closed, true);
 });
 
 test('a slow-client close (1013) is transient and resubscribes', async () => {
@@ -342,9 +363,10 @@ const cursorPage = (data: unknown[], next: string | null) => ({
   ...page(data),
   next_cursor: next,
 });
+const bar = (n: number, close: string, volume = '1') =>
+  candleRecord(minute(n), close, close, close, close, volume);
 
-test('trading is available while trade history keeps failing', async () => {
-  const h = harness();
+async function subscribedMarket(h: ReturnType<typeof harness>) {
   h.session.start();
   await h.reply('/instruments', instruments());
   const socket = h.sockets[0];
@@ -352,141 +374,127 @@ test('trading is available while trade history keeps failing', async () => {
   socket.open();
   socket.deliver(subscribed({ book: 0, trades: 0 }));
   socket.deliver(...bookSnapshot(0, [['99.00', '1']], [['101.00', '2']]));
-  await h.fail('/trades');
+  return socket;
+}
+
+test('instrument, candles, and the subscription start together', async () => {
+  const h = harness();
+  h.session.start();
+  await h.flush();
+  assert.deepEqual(h.requests.map((request) => request.path).sort(), [
+    '/candles',
+    '/instruments',
+  ]);
+  assert.equal(h.sockets.length, 1);
+});
+
+test('the chart appears from candles before the subscription is confirmed', async () => {
+  const h = harness();
+  h.session.start();
+  await h.reply(
+    '/candles',
+    candles([bar(10, '100.00'), bar(11, '101.00')], '9'),
+  );
+  const { market } = h.session.getView();
+  assert.equal(market.historyStatus, 'ready');
+  assert.deepEqual(
+    market.chart.candles.map((candle) => candle.close),
+    ['100.00', '101.00'],
+  );
+  assert.equal(market.lastPrice, '101.00');
+  assert.equal(market.statsLabel, '1H');
+  // No trade request is made until the subscription can buffer live trades.
+  assert.ok(!h.requests.some((request) => request.path.startsWith('/trades')));
+});
+
+test('trading is available while price history keeps failing', async () => {
+  const h = harness();
+  await subscribedMarket(h);
+  await h.fail('/candles');
   const { market } = h.session.getView();
   assert.equal(market.status, 'ready');
   assert.equal(market.historyStatus, 'unavailable');
   assert.equal(h.session.getView().notice, null);
+  await h.advance(1000);
+  await h.reply('/candles', candles([bar(5, '100.00')], '1'));
+  await h.reply('/trades', page([]));
+  assert.equal(h.session.getView().market.historyStatus, 'ready');
 });
 
-test('a failed history page is retried alone and earlier pages are kept', async () => {
+test('a failed bridge page is retried alone', async () => {
   const h = harness();
-  h.session.start();
-  await h.reply('/instruments', instruments());
-  const socket = h.sockets[0];
-  assert.ok(socket);
-  socket.open();
-  socket.deliver(subscribed({ book: 0, trades: 0 }));
-  socket.deliver(...bookSnapshot(0, [], []));
-  const first = await h.reply(
+  await subscribedMarket(h);
+  await h.reply('/candles', candles([bar(30, '100.00')], '10'));
+  await h.reply(
     '/trades',
-    cursorPage([tradeRecord('3', '103.00', '1', minute(30))], 'c1'),
+    cursorPage([tradeRecord('12', '103.00', '1', minute(31))], 'c1'),
   );
-  assert.match(first.path, /limit=1000/);
   await h.fail('/trades');
   await h.advance(1000);
   const retry = await h.reply(
     '/trades',
-    cursorPage([tradeRecord('2', '102.00', '1', minute(10))], null),
+    cursorPage([tradeRecord('11', '102.00', '1', minute(31))], 'c2'),
   );
   assert.match(retry.path, /cursor=c1/);
-  const { market } = h.session.getView();
-  assert.equal(market.historyStatus, 'ready');
-  assert.deepEqual(
-    market.chart.candles.map((candle) => candle.close),
-    ['102.00', '103.00'],
-  );
-  assert.equal(market.statsLabel, '1H');
-});
-
-test('history paging stops at the window start', async () => {
-  const h = harness();
-  const socket = await (async () => {
-    h.session.start();
-    await h.reply('/instruments', instruments());
-    const s = h.sockets[0];
-    s?.open();
-    s?.deliver(subscribed({ book: 0, trades: 0 }));
-    s?.deliver(...bookSnapshot(0, [], []));
-    return s;
-  })();
-  assert.ok(socket);
-  // Newest at 13:30, oldest on the page at 12:20: older than the window start.
+  // Trade 11 was the oldest after the snapshot; 10 would be next: still
+  // unreached, so paging continues until a known trade appears.
   await h.reply(
     '/trades',
-    cursorPage(
-      [
-        tradeRecord('2', '102.00', '1', minute(90)),
-        tradeRecord('1', '101.00', '1', minute(20)),
-      ],
-      'more',
-    ),
+    cursorPage([tradeRecord('10', '100.00', '1', minute(30))], 'c3'),
   );
-  assert.equal(h.requests.length, 0);
   const { market } = h.session.getView();
   assert.equal(market.historyStatus, 'ready');
   assert.deepEqual(
     market.chart.candles.map((candle) => candle.close),
-    ['102.00'],
+    ['100.00', '103.00'],
   );
+  assert.equal(market.stats?.volume, '3');
 });
 
-test('the page limit bounds the backfill and labels where data starts', async () => {
+test('too many trades between snapshot and subscription reload the snapshot', async () => {
   const h = harness();
-  h.session.start();
-  await h.reply('/instruments', instruments());
-  const socket = h.sockets[0];
-  socket?.open();
-  socket?.deliver(subscribed({ book: 0, trades: 0 }));
-  socket?.deliver(...bookSnapshot(0, [], []));
-  for (let index = 0; index < HISTORY_PAGE_LIMIT; index++) {
-    const id = 100 - index * 2;
+  await subscribedMarket(h);
+  await h.reply('/candles', candles([bar(30, '100.00')], '1'));
+  for (let index = 0; index < BRIDGE_PAGE_LIMIT; index++)
     await h.reply(
       '/trades',
       cursorPage(
-        [
-          tradeRecord(String(id), '100.00', '1', minute(59 - index)),
-          tradeRecord(String(id - 1), '100.00', '1', minute(59 - index)),
-        ],
+        [tradeRecord(String(1000 - index), '105.00', '1', minute(40))],
         `c${index}`,
       ),
     );
-  }
-  assert.equal(h.requests.length, 0);
+  // The bridge gives up; a snapshot taken while subscribed has no gap.
+  await h.reply('/candles', candles([bar(40, '105.00', '7')], '1000'));
   const { market } = h.session.getView();
   assert.equal(market.historyStatus, 'ready');
-  // The oldest loaded minute may be partial, so it is dropped.
-  assert.equal(market.chart.candles.length, HISTORY_PAGE_LIMIT - 1);
-  assert.match(market.statsLabel, /^SINCE /);
-  assert.match(market.historyNote, /^Since /);
+  assert.equal(market.stats?.volume, '7');
+  assert.equal(
+    h.requests.filter((request) => request.path.startsWith('/trades')).length,
+    0,
+  );
 });
 
-test('a resubscribe fetches only trades newer than those applied', async () => {
+test('a resubscribe reloads candles and bridges again', async () => {
   const h = harness();
-  h.session.start();
-  await h.reply('/instruments', instruments());
-  const socket = h.sockets[0];
-  socket?.open();
-  socket?.deliver(subscribed({ book: 0, trades: 0 }));
-  socket?.deliver(...bookSnapshot(0, [], []));
-  await h.reply(
-    '/trades',
-    cursorPage([tradeRecord('5', '100.00', '1', minute(30))], null),
-  );
-  socket?.drop();
+  const socket = await subscribedMarket(h);
+  await h.reply('/candles', candles([bar(30, '100.00')], '5'));
+  await h.reply('/trades', page([]));
+  socket.drop();
+  assert.equal(h.session.getView().market.historyStatus, 'stale');
   await h.advance(1000);
   const next = h.sockets.at(-1);
   next?.open();
   next?.deliver(subscribed({ book: 0, trades: 0 }));
   next?.deliver(...bookSnapshot(0, [], []));
-  assert.equal(h.session.getView().market.historyStatus, 'stale');
   await h.reply(
-    '/trades',
-    cursorPage(
-      [
-        tradeRecord('7', '104.00', '1', minute(31)),
-        tradeRecord('6', '103.00', '1', minute(31)),
-        tradeRecord('5', '100.00', '1', minute(30)),
-      ],
-      'older',
-    ),
+    '/candles',
+    candles([bar(30, '100.00'), bar(31, '104.00')], '7'),
   );
-  // Reaching an applied trade ends paging even though older pages exist.
-  assert.equal(h.requests.length, 0);
+  await h.reply('/trades', page([tradeRecord('7', '104.00', '1', minute(31))]));
   const { market } = h.session.getView();
   assert.equal(market.historyStatus, 'ready');
   assert.equal(market.lastPrice, '104.00');
-  assert.equal(market.stats?.volume, '3');
+  assert.equal(market.stats?.volume, '2');
 });
 
 test('changes between frames publish one view, and unchanged slices keep identity', async () => {
@@ -497,10 +505,8 @@ test('changes between frames publish one view, and unchanged slices keep identit
   socket?.open();
   socket?.deliver(subscribed({ book: 0, trades: 0 }));
   socket?.deliver(...bookSnapshot(0, [['99.00', '1']], [['101.00', '2']]));
-  await h.reply(
-    '/trades',
-    page([tradeRecord('1', '100.00', '1', '2026-11-07T12:00:00+00:00')]),
-  );
+  await h.reply('/candles', candles([bar(0, '100.00')], '1'));
+  await h.reply('/trades', page([]));
   h.frame();
   const before = h.session.getView();
   let published = 0;

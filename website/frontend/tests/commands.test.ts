@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { uuidV4 } from '../src/live/session.ts';
-import { harness, instruments, page } from './fake.ts';
+import { candles, harness, instruments, page } from './fake.ts';
 import { bookSnapshot, frame, orderRecord, subscribed } from './frames.ts';
 
 const UUID =
@@ -15,6 +15,7 @@ async function ready(permissions = ['read', 'trade']) {
   market?.open();
   market?.deliver(subscribed({ book: 0, trades: 0 }));
   market?.deliver(...bookSnapshot(0, [], []));
+  await h.reply('/candles', candles());
   await h.reply('/trades', page([]));
   void h.session.connect('alice-token');
   await h.reply('/identity', { account_id: 'alice', permissions });
