@@ -72,7 +72,9 @@ export type MarketView = {
   lastPrice: Decimal | null;
   chart: Chart;
   stats: MarketStats | null;
-  /** Upper-case prefix naming the statistics window, e.g. "SNAPSHOT". */
+  /** Price history (chart, stats, last price); independent of trading readiness. */
+  historyStatus: 'loading' | 'ready' | 'stale' | 'unavailable';
+  /** Upper-case prefix naming the statistics window, e.g. "1H". */
   statsLabel: string;
   /** Caption describing the history window (e.g. since exchange start). */
   historyNote: string;

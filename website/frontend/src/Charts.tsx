@@ -184,6 +184,27 @@ export function CandleChart({ chart }: { chart: Chart }) {
   const { candles, interval } = chart;
   const first = candles[0];
   const latest = candles.at(-1);
+  if ((!first || !latest) && market.historyStatus === 'loading')
+    return (
+      <EmptyChart
+        title="Loading price history"
+        description="Recent executions are on their way. Trading is available meanwhile."
+      />
+    );
+  if ((!first || !latest) && market.historyStatus === 'unavailable')
+    return (
+      <EmptyChart
+        title="Price history unavailable"
+        description="Retrying. Trading does not depend on the chart."
+      />
+    );
+  if ((!first || !latest) && market.lastPrice !== null)
+    return (
+      <EmptyChart
+        title="No recent executions"
+        description="Candles appear for trades in the last hour."
+      />
+    );
   if (!first || !latest)
     return (
       <EmptyChart

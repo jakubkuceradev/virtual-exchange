@@ -100,11 +100,27 @@ export function createRest(base = '/exchange', fetcher: Fetch = fetch) {
   }
   const get = (path: string, token: string | null = null) =>
     request('GET', path, token);
+  /** One page of a cursor-paginated list. */
+  async function fetchPage(
+    path: string,
+    token: string | null = null,
+    params: Record<string, string> = {},
+  ): Promise<Page> {
+    const query = new URLSearchParams(params);
+    const raw = object(await get(`${path}?${query}`, token), 'page');
+    return {
+      processId: text(raw.process_id),
+      data: Array.isArray(raw.data) ? raw.data : [],
+      nextCursor: raw.next_cursor == null ? null : text(raw.next_cursor),
+      highWatermark: Number(raw.high_watermark),
+    };
+  }
   return {
     get,
     post: (path: string, body: unknown, token: string) =>
       request('POST', path, token, body),
     delete: (path: string, token: string) => request('DELETE', path, token),
+    page: fetchPage,
     /** Follow opaque cursors to the end of a list fixed by its high watermark. */
     async all(
       path: string,
@@ -115,15 +131,11 @@ export function createRest(base = '/exchange', fetcher: Fetch = fetch) {
       let cursor: string | null = null;
       let first: Page | null = null;
       do {
-        const query = new URLSearchParams({ ...params, limit: '1000' });
-        if (cursor) query.set('cursor', cursor);
-        const raw = object(await get(`${path}?${query}`, token), 'page');
-        const page: Page = {
-          processId: text(raw.process_id),
-          data: Array.isArray(raw.data) ? raw.data : [],
-          nextCursor: raw.next_cursor == null ? null : text(raw.next_cursor),
-          highWatermark: Number(raw.high_watermark),
-        };
+        const page: Page = await fetchPage(path, token, {
+          ...params,
+          limit: '1000',
+          ...(cursor ? { cursor } : {}),
+        });
         if (first && page.processId !== first.processId)
           throw new RestFailure('ambiguous', 'process_changed', null);
         first ??= page;

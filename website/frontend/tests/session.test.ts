@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { HEARTBEAT_DEADLINE_MS } from '../src/live/session.ts';
+import {
+  HEARTBEAT_DEADLINE_MS,
+  HISTORY_PAGE_LIMIT,
+} from '../src/live/session.ts';
 import { harness, instruments, page } from './fake.ts';
 import {
   bookSnapshot,
@@ -65,7 +68,9 @@ test('trades buffered during REST recovery merge without duplicates', async () =
   socket.deliver(
     frame('trades', 5, 'update', [tradeRecord('5', '102.00', '1')]),
   );
-  assert.equal(h.session.getView().market.status, 'connecting');
+  // The book alone makes the market tradable; history loads separately.
+  assert.equal(h.session.getView().market.status, 'ready');
+  assert.equal(h.session.getView().market.historyStatus, 'loading');
   await h.reply(
     '/trades',
     page([tradeRecord('5', '102.00', '1'), tradeRecord('4', '100.00', '2')]),
@@ -329,4 +334,157 @@ test('stopping (unmount) closes both sockets and leaves no timers', async () => 
   market.deliver(frame('book', 1, 'update', []));
   await h.advance(60_000);
   assert.equal(h.sockets.length, 2);
+});
+
+const minute = (n: number) =>
+  `2026-11-07T${String(12 + Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}:00+00:00`;
+const cursorPage = (data: unknown[], next: string | null) => ({
+  ...page(data),
+  next_cursor: next,
+});
+
+test('trading is available while trade history keeps failing', async () => {
+  const h = harness();
+  h.session.start();
+  await h.reply('/instruments', instruments());
+  const socket = h.sockets[0];
+  assert.ok(socket);
+  socket.open();
+  socket.deliver(subscribed({ book: 0, trades: 0 }));
+  socket.deliver(...bookSnapshot(0, [['99.00', '1']], [['101.00', '2']]));
+  await h.fail('/trades');
+  const { market } = h.session.getView();
+  assert.equal(market.status, 'ready');
+  assert.equal(market.historyStatus, 'unavailable');
+  assert.equal(h.session.getView().notice, null);
+});
+
+test('a failed history page is retried alone and earlier pages are kept', async () => {
+  const h = harness();
+  h.session.start();
+  await h.reply('/instruments', instruments());
+  const socket = h.sockets[0];
+  assert.ok(socket);
+  socket.open();
+  socket.deliver(subscribed({ book: 0, trades: 0 }));
+  socket.deliver(...bookSnapshot(0, [], []));
+  const first = await h.reply(
+    '/trades',
+    cursorPage([tradeRecord('3', '103.00', '1', minute(30))], 'c1'),
+  );
+  assert.match(first.path, /limit=1000/);
+  await h.fail('/trades');
+  await h.advance(1000);
+  const retry = await h.reply(
+    '/trades',
+    cursorPage([tradeRecord('2', '102.00', '1', minute(10))], null),
+  );
+  assert.match(retry.path, /cursor=c1/);
+  const { market } = h.session.getView();
+  assert.equal(market.historyStatus, 'ready');
+  assert.deepEqual(
+    market.chart.candles.map((candle) => candle.close),
+    ['102.00', '103.00'],
+  );
+  assert.equal(market.statsLabel, '1H');
+});
+
+test('history paging stops at the window start', async () => {
+  const h = harness();
+  const socket = await (async () => {
+    h.session.start();
+    await h.reply('/instruments', instruments());
+    const s = h.sockets[0];
+    s?.open();
+    s?.deliver(subscribed({ book: 0, trades: 0 }));
+    s?.deliver(...bookSnapshot(0, [], []));
+    return s;
+  })();
+  assert.ok(socket);
+  // Newest at 13:30, oldest on the page at 12:20: older than the window start.
+  await h.reply(
+    '/trades',
+    cursorPage(
+      [
+        tradeRecord('2', '102.00', '1', minute(90)),
+        tradeRecord('1', '101.00', '1', minute(20)),
+      ],
+      'more',
+    ),
+  );
+  assert.equal(h.requests.length, 0);
+  const { market } = h.session.getView();
+  assert.equal(market.historyStatus, 'ready');
+  assert.deepEqual(
+    market.chart.candles.map((candle) => candle.close),
+    ['102.00'],
+  );
+});
+
+test('the page limit bounds the backfill and labels where data starts', async () => {
+  const h = harness();
+  h.session.start();
+  await h.reply('/instruments', instruments());
+  const socket = h.sockets[0];
+  socket?.open();
+  socket?.deliver(subscribed({ book: 0, trades: 0 }));
+  socket?.deliver(...bookSnapshot(0, [], []));
+  for (let index = 0; index < HISTORY_PAGE_LIMIT; index++) {
+    const id = 100 - index * 2;
+    await h.reply(
+      '/trades',
+      cursorPage(
+        [
+          tradeRecord(String(id), '100.00', '1', minute(59 - index)),
+          tradeRecord(String(id - 1), '100.00', '1', minute(59 - index)),
+        ],
+        `c${index}`,
+      ),
+    );
+  }
+  assert.equal(h.requests.length, 0);
+  const { market } = h.session.getView();
+  assert.equal(market.historyStatus, 'ready');
+  // The oldest loaded minute may be partial, so it is dropped.
+  assert.equal(market.chart.candles.length, HISTORY_PAGE_LIMIT - 1);
+  assert.match(market.statsLabel, /^SINCE /);
+  assert.match(market.historyNote, /^Since /);
+});
+
+test('a resubscribe fetches only trades newer than those applied', async () => {
+  const h = harness();
+  h.session.start();
+  await h.reply('/instruments', instruments());
+  const socket = h.sockets[0];
+  socket?.open();
+  socket?.deliver(subscribed({ book: 0, trades: 0 }));
+  socket?.deliver(...bookSnapshot(0, [], []));
+  await h.reply(
+    '/trades',
+    cursorPage([tradeRecord('5', '100.00', '1', minute(30))], null),
+  );
+  socket?.drop();
+  await h.advance(1000);
+  const next = h.sockets.at(-1);
+  next?.open();
+  next?.deliver(subscribed({ book: 0, trades: 0 }));
+  next?.deliver(...bookSnapshot(0, [], []));
+  assert.equal(h.session.getView().market.historyStatus, 'stale');
+  await h.reply(
+    '/trades',
+    cursorPage(
+      [
+        tradeRecord('7', '104.00', '1', minute(31)),
+        tradeRecord('6', '103.00', '1', minute(31)),
+        tradeRecord('5', '100.00', '1', minute(30)),
+      ],
+      'older',
+    ),
+  );
+  // Reaching an applied trade ends paging even though older pages exist.
+  assert.equal(h.requests.length, 0);
+  const { market } = h.session.getView();
+  assert.equal(market.historyStatus, 'ready');
+  assert.equal(market.lastPrice, '104.00');
+  assert.equal(market.stats?.volume, '3');
 });

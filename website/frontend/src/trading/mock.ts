@@ -222,6 +222,7 @@ export function useMockSource(): TradingSource {
         interval: CANDLE_INTERVAL,
       },
       stats: empty ? null : sampleStats,
+      historyStatus: 'ready',
       statsLabel: 'SNAPSHOT',
       historyNote: 'Sample session',
     },

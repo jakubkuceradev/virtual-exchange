@@ -75,6 +75,7 @@ export function harness() {
       timers.delete(handle as number);
     },
     random: () => 0.5,
+    now: () => now,
     randomBytes: (bytes) => {
       for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 37 + uuids) & 0xff;
       uuids++;
