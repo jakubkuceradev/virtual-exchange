@@ -527,3 +527,33 @@ test('changes between frames publish one view, and unchanged slices keep identit
   h.frame();
   assert.equal(published, 1);
 });
+
+test('the account is ready before fill history, which retries without blocking trading', async () => {
+  const h = harness();
+  await publicReady(h);
+  const socket = await connected(h);
+  socket?.open();
+  socket?.deliver(subscribed({ orders: 0, fills: 0 }));
+  await h.reply('/account/snapshot', snapshotBody(5, [orderRecord('a', 5)], 2));
+  let { account } = h.session.getView();
+  assert.equal(account.status, 'ready');
+  if (account.status !== 'ready') return;
+  assert.equal(account.canTrade, true);
+  assert.equal(account.fillsReady, false);
+  await h.fail('/fills');
+  assert.equal(h.session.getView().account.status, 'ready');
+  // A live fill during the retry is kept and merged with the history.
+  socket?.deliver(
+    frame('fills', 1, 'update', [fillRecord('3', 'a')], { commit: 7 }),
+  );
+  await h.advance(1000);
+  await h.reply('/fills', page([fillRecord('2', 'a'), fillRecord('1', 'a')]));
+  account = h.session.getView().account;
+  assert.equal(account.status, 'ready');
+  if (account.status !== 'ready') return;
+  assert.equal(account.fillsReady, true);
+  assert.deepEqual(
+    account.fills.map((row) => row.id),
+    ['3:a', '2:a', '1:a'],
+  );
+});

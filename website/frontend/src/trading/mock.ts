@@ -249,6 +249,7 @@ export function useMockSource(): TradingSource {
         quantity: whole(fill.quantity),
         time: fill.time,
       })),
+      fillsReady: true,
     },
     trading: {
       busy: false,

@@ -367,6 +367,14 @@ export function FillRows() {
         </td>
       </tr>
     );
+  if (!account.fills.length && !account.fillsReady)
+    return (
+      <tr>
+        <td className={cx('empty-cell')} colSpan={4}>
+          Loading your fills…
+        </td>
+      </tr>
+    );
   if (!account.fills.length)
     return (
       <tr>

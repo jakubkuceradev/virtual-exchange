@@ -115,6 +115,8 @@ export type AccountView =
       orders: Order[];
       /** Newest first. */
       fills: Fill[];
+      /** False while fill history is still loading (trading is already possible). */
+      fillsReady: boolean;
     };
 
 export type Identity = {
