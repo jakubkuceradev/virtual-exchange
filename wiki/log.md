@@ -1,5 +1,9 @@
 # Wiki Update Log
 
+## 2026-11-14
+
+* **Exchange durability level**: The store now uses `synchronous=NORMAL` instead of `FULL`. Process crashes still lose nothing; an OS crash or power loss may lose the most recent commits, accepted for this exchange to drop one fsync per command.
+
 ## 2026-11-10
 
 * **Market news (website)**: Added the public News view: live items newest first with tags, body and an event countdown, plus an unread badge on the navigation entry (tab memory only; backlog counts until opened). The live client subscribes to `news` on its own socket so feed failures never stale the market.
