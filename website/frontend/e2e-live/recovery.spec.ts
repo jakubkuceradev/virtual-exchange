@@ -79,7 +79,7 @@ test('reconnecting while others trade restores book, orders, fills, chart and ba
   await expect.poll(() => overview(page)).toEqual({ cash: '901.00 EUR', holdings: '1 QC' });
 });
 
-test('an exchange restart resets state, keeps the credential, and replays nothing', async ({
+test('an exchange restart restores committed state, keeps the credential, and replays nothing', async ({
   browser,
   exchange,
   baseURL,
@@ -99,16 +99,15 @@ test('an exchange restart resets state, keeps the credential, and replays nothin
   await expect(page.getByRole('status').first()).toContainText('restarted', {
     timeout: 20_000,
   });
-  await expect(page.locator('#last-price')).toContainText('No trades yet');
-  await expect(page.locator('#candlestick-chart')).toContainText('No executions yet');
-  await expect(page.locator('#orders-body')).toContainText('No orders yet');
-  await expect(page.locator('#fills-body')).toContainText('No fills yet');
-  await expect(page.locator('#asks')).toContainText('No resting orders');
+  // The persistent exchange restores committed state; nothing is replayed.
+  await expect(page.locator('#last-price')).toContainText('100.00');
+  await expect(page.locator('#fills-body tr')).toHaveCount(1);
+  await expect(page.locator('#asks')).toContainText('100.00');
   await expect(page.getByRole('banner')).toContainText('alice');
-  await expect.poll(() => overview(page)).toEqual({ cash: '1,000.00 EUR', holdings: '0 QC' });
-  await expect.poll(() => overview(bob.page)).toEqual({ cash: '0.00 EUR', holdings: '10 QC' });
+  await expect.poll(() => overview(page)).toEqual({ cash: '900.00 EUR', holdings: '1 QC' });
+  await expect.poll(() => overview(bob.page)).toEqual({ cash: '100.00 EUR', holdings: '9 QC' });
   const orders = await api(baseURL ?? '', 'GET', '/orders', tokens.alice);
-  expect(orders.body.data).toEqual([]);
+  expect(orders.body.data).toHaveLength(1);
   // The unchanged credential keeps working on the new process.
   await page.getByLabel('Limit price', { exact: true }).fill('50');
   await page.getByLabel('Quantity', { exact: true }).fill('1');

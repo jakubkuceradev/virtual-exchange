@@ -6,14 +6,17 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Live acceptance suite: real exchange processes (started per test by the
- * `exchange` fixture) behind the real Vite preview proxy, driven through two
- * isolated browser contexts. Requires `npm run build` (live mode) and uv.
+ * `exchange` fixture, each with a fresh persistent store) and, where a test
+ * asks for it, the real website backend (`website` fixture), behind the real
+ * Vite preview proxy, driven through isolated browser contexts. Requires
+ * `npm run build` (live mode) and uv.
  *
  * Synthetic configuration is generated once per run into a private temp
  * directory; workers inherit its location through the environment.
  */
 const PREVIEW_PORT = 4176;
 const EXCHANGE_PORT = 18_000;
+const WEBSITE_PORT = 18_001;
 
 if (!process.env.LIVE_DIR) {
   const dir = mkdtempSync(join(tmpdir(), 'vx-live-'));
@@ -23,6 +26,8 @@ if (!process.env.LIVE_DIR) {
     aliceRead: ['alice', ['read']],
     aliceTrade: ['alice', ['trade']],
     carol: ['carol', ['read', 'trade']],
+    // The website backend's service identity: account listing only.
+    observer: ['website', ['observe_accounts']],
   };
   const tokens = Object.fromEntries(
     Object.keys(grants).map((name) => [
@@ -61,6 +66,7 @@ if (!process.env.LIVE_DIR) {
   write('tokens.json', tokens);
   process.env.LIVE_DIR = dir;
   process.env.LIVE_EXCHANGE_PORT = String(EXCHANGE_PORT);
+  process.env.LIVE_WEBSITE_PORT = String(WEBSITE_PORT);
 }
 
 export default defineConfig({
@@ -80,6 +86,9 @@ export default defineConfig({
     command: `npx vite preview --host 127.0.0.1 --port ${PREVIEW_PORT} --strictPort`,
     url: `http://127.0.0.1:${PREVIEW_PORT}`,
     reuseExistingServer: false,
-    env: { EXCHANGE_URL: `http://127.0.0.1:${EXCHANGE_PORT}` },
+    env: {
+      EXCHANGE_URL: `http://127.0.0.1:${EXCHANGE_PORT}`,
+      WEBSITE_BACKEND_URL: `http://127.0.0.1:${WEBSITE_PORT}`,
+    },
   },
 });

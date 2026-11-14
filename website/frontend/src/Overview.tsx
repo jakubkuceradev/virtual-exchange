@@ -1,47 +1,60 @@
 /**
  * Overview over the active TradingSource.
  * @implemented-ui Responsive metric/panel layout; cash, holdings, reservations and
- *   the market card come from the source.
- * @mock-backend Valuation, profit, performance and standings exist only as sample
- *   data; live mode shows them as unavailable rather than deriving new rules.
+ *   the market card come from the exchange. Account value, profit, performance
+ *   history, rank and nearby standings come from the source's competition view:
+ *   the website backend in live mode (5-minute average mark), fixtures in mock
+ *   mode. Without them the panels show unavailable states.
+ * @mock-frontend The holdings card's valuation note (mock source only).
  */
 import { EmptyChart, PerformanceChart } from './Charts';
-import { Nearby } from './Standings';
+import { Nearby, unrankedMessage } from './Standings';
 import { cx, money, number, signed } from './styles';
 import { change } from './Trade';
 import { accountMessage } from './Trading';
 import { useTrading } from './trading/context.tsx';
 import type { Decimal } from './trading/decimal.ts';
-import { add, cmp, mul, sub, toNumber } from './trading/decimal.ts';
+import { cmp, isZero, mul, sub, toNumber } from './trading/decimal.ts';
 
 const abs = (value: Decimal) => value.replace(/^-/, '');
+/** Backend values carry 8 decimal places; show cents. */
+const cents = (value: Decimal) => {
+  const [whole, fraction = ''] = value.split('.');
+  return `${whole}.${fraction.padEnd(2, '0').slice(0, 2)}`;
+};
 
-/** @implemented-ui Account metrics from the source. @mock-backend Sample valuation/competition. */
+/** @implemented-ui Account metrics and competition panels from the source. */
 export function Overview({ active }: { active: boolean }) {
-  const { market, account, samples, identity } = useTrading();
+  const { kind, market, account, competition, identity } = useTrading();
   const base = market.instrument?.baseAsset ?? '—';
   const quote = market.instrument?.quoteAsset ?? '—';
   const { lastPrice } = market;
   const ready = account.status === 'ready' || account.status === 'stale';
   const unavailable = ready ? '' : accountMessage(account, 'balances');
-  // Sample valuation only: cash plus holdings at the latest execution price.
+  const rankings = competition.status === 'ready' ? competition : null;
+  const personal = rankings?.personal ?? null;
+  const total = personal?.value == null ? null : cents(personal.value);
+  const baseline = personal?.baseline ?? null;
+  const profit =
+    total != null && baseline != null ? sub(total, cents(baseline)) : null;
+  const gaining = profit != null && cmp(profit, '0') >= 0;
+  const standing = rankings?.periods.continuous ?? null;
+  const own = standing?.you ?? null;
+  const history = personal?.performance ?? [];
+  // Live: the headline is the current value; the series holds 10-minute
+  // samples. The mock keeps the sample series' last point.
+  const current = kind === 'live' ? total : null;
+  const latest = current != null ? toNumber(current) : (history.at(-1) ?? 0);
+  const [latestWhole, latestCents] = money(latest.toFixed(2)).split('.');
+  // The holdings card values holdings at the last execution price (mock only).
   const holdingValue =
-    !ready || !samples
+    kind !== 'mock' || !ready
       ? null
       : lastPrice == null
-        ? cmp(account.asset.total, '0') === 0
+        ? isZero(account.asset.total)
           ? '0'
           : null
         : mul(account.asset.total, lastPrice);
-  const total =
-    ready && holdingValue != null
-      ? add(account.cash.total, holdingValue)
-      : null;
-  const profit = samples && total != null ? sub(total, samples.baseline) : null;
-  const gaining = profit != null && cmp(profit, '0') >= 0;
-  const latest = samples?.performance.at(-1) ?? 0;
-  const [latestWhole, latestCents] = money(latest.toFixed(2)).split('.');
-  const standing = samples?.periods.continuous;
   const movement = change(market);
   return (
     <section
@@ -59,8 +72,10 @@ export function Overview({ active }: { active: boolean }) {
             {total == null ? '—' : money(total)} <small>{quote}</small>
           </div>
           <span className={cx('metric-note')}>
-            {samples
-              ? `Cash + ${base} at the sample valuation`
+            {total != null
+              ? kind === 'mock'
+                ? `Cash + ${base} at the sample valuation`
+                : `Cash + ${base} at the 5-minute average price`
               : 'Account valuation is not available yet'}
           </span>
         </article>
@@ -83,7 +98,7 @@ export function Overview({ active }: { active: boolean }) {
           <span className={cx('metric-note')} data-value="holding-value">
             {!ready
               ? unavailable
-              : !samples
+              : kind !== 'mock'
                 ? `${number(account.asset.available)} available · ${number(account.asset.reserved)} reserved in orders`
                 : lastPrice == null || holdingValue == null
                   ? 'No market valuation yet'
@@ -116,11 +131,11 @@ export function Overview({ active }: { active: boolean }) {
             )}
             data-value="profit-percent"
           >
-            {!samples
+            {!personal
               ? 'Profit is not calculated yet'
-              : profit == null
+              : profit == null || baseline == null || isZero(baseline)
                 ? 'Awaiting a market valuation'
-                : `${signed((toNumber(profit) / toNumber(samples.baseline)) * 100)} since joining`}
+                : `${signed((toNumber(profit) / toNumber(baseline)) * 100)} since joining`}
           </span>
         </article>
       </div>
@@ -133,7 +148,7 @@ export function Overview({ active }: { active: boolean }) {
             </div>
           </div>
           <div className={cx('chart-summary')}>
-            {!samples || samples.empty || !standing ? (
+            {history.length === 0 && current == null ? (
               <strong>—</strong>
             ) : (
               <>
@@ -143,26 +158,38 @@ export function Overview({ active }: { active: boolean }) {
                     .{latestCents} {quote}
                   </span>
                 </strong>
-                <span className={cx('positive')}>
-                  ↗ {signed(standing.profit)}
-                </span>
+                {own?.returnPercent != null && (
+                  <span
+                    className={cx(
+                      own.returnPercent >= 0 ? 'positive' : 'negative',
+                    )}
+                  >
+                    {own.returnPercent >= 0 ? '↗' : '↘'}{' '}
+                    {signed(own.returnPercent)}
+                  </span>
+                )}
               </>
             )}
           </div>
           <p className={cx('small muted')}>{'Account value'}</p>
           <div id="performance-chart" className={cx('line-chart')}>
-            {!samples ? (
-              <EmptyChart
-                title="Performance history unavailable"
-                description="Personal performance is not tracked yet."
-              />
-            ) : samples.empty ? (
+            {competition.status === 'empty' ||
+            (personal != null && history.length < 2) ? (
               <EmptyChart
                 title="No performance history yet"
                 description="Your account history will appear here."
               />
+            ) : !personal ? (
+              <EmptyChart
+                title="Performance history unavailable"
+                description={
+                  rankings
+                    ? 'Connect your account to see your performance.'
+                    : 'Personal performance is not tracked yet.'
+                }
+              />
             ) : (
-              <PerformanceChart series={samples.performance} />
+              <PerformanceChart series={history} times={personal.times} />
             )}
           </div>
           <div className={cx('panel-foot')}>
@@ -173,7 +200,7 @@ export function Overview({ active }: { active: boolean }) {
             <span>
               {'Starting value '}
               <strong>
-                {samples ? `${number(samples.baseline)} ${quote}` : '—'}
+                {baseline != null ? `${number(cents(baseline))} ${quote}` : '—'}
               </strong>
             </span>
           </div>
@@ -188,30 +215,36 @@ export function Overview({ active }: { active: boolean }) {
           <div className={cx('rank-summary')}>
             <div>
               <span className={cx('rank-number')}>
-                {!samples || samples.empty || !standing ? (
+                {own?.rank == null || !standing ? (
                   '—'
                 ) : (
                   <>
-                    {standing.rank}
-                    <span>/ {samples.participantCount}</span>
+                    {own.rank}
+                    <span>/ {standing.participantCount}</span>
                   </>
                 )}
               </span>
-              <p className={cx('small muted')}>{'Your current rank'}</p>
+              <p className={cx('small muted')}>
+                {own && own.rank == null
+                  ? unrankedMessage(own.reason)
+                  : 'Your current rank'}
+              </p>
             </div>
             <div className={cx('rank-return')}>
-              <strong className={cx('positive')}>
-                {!samples || samples.empty || !standing
-                  ? '—'
-                  : signed(standing.profit)}
+              <strong
+                className={cx(
+                  (own?.returnPercent ?? 0) >= 0 ? 'positive' : 'negative',
+                )}
+              >
+                {own?.returnPercent == null ? '—' : signed(own.returnPercent)}
               </strong>
               <span className={cx('small muted')}>Return</span>
             </div>
           </div>
           <div className={cx('nearby-list')}>
             <Nearby
-              period={standing ?? null}
-              empty={samples?.empty ?? false}
+              period={standing}
+              empty={competition.status === 'empty'}
               you={identity?.name ?? ''}
             />
           </div>

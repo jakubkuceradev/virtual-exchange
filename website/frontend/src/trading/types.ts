@@ -3,7 +3,7 @@
  * Implemented by the mock session (src/trading/mock.ts) and the live exchange
  * session. Amounts are decimal strings; commands resolve asynchronously.
  */
-import type { Period, Standings } from '../fixtures.ts';
+import type { Period } from '../fixtures.ts';
 import type { Decimal } from './decimal.ts';
 
 export type Side = 'buy' | 'sell';
@@ -139,16 +139,61 @@ export type SampleCredentials = {
   revoke: () => Outcome;
 };
 
-/** Fixture observations for features the exchange does not provide (mock only). */
+/** Fixture-only features that have no real source yet (mock only). */
 export type Samples = {
-  /** The no-trades scenario: sample history and rankings are absent. */
-  empty: boolean;
-  baseline: Decimal;
-  performance: number[];
-  periods: Record<Period, Standings>;
-  participantCount: number;
   credentials: SampleCredentials;
 };
+
+/** One ranked participant: public rank, name and return only. */
+export type Ranking = { rank: number; name: string; returnPercent: number };
+
+/** The signed-in caller's place in one period. */
+export type Position = {
+  /** Null when unranked; `reason` then says why. */
+  rank: number | null;
+  /** Null when the account cannot be valued yet. */
+  returnPercent: number | null;
+  reason: string | null;
+};
+
+export type PeriodStanding = {
+  participantCount: number;
+  /** The top of the field. */
+  leaders: Ranking[];
+  /** The caller's position, or null when signed out. */
+  you: Position | null;
+  /** Ranks around the caller (two either side); empty when unranked/signed out. */
+  nearby: Ranking[];
+};
+
+/** The caller's own valuation; never another participant's. */
+export type Personal = {
+  /** Portfolio value in the quote currency; null before the first valuation. */
+  value: Decimal | null;
+  /** Value at the continuous baseline (account creation). */
+  baseline: Decimal | null;
+  /** Account value history, oldest first. */
+  performance: number[];
+  /** Epoch milliseconds per performance point; null for the fixed sample. */
+  times: number[] | null;
+};
+
+/**
+ * Rankings and the caller's valuation. Live data comes from the website
+ * backend; the mock source supplies fixtures. Never falls back to fixtures.
+ */
+export type Competition =
+  | { status: 'loading' | 'unavailable' }
+  /** No ranking snapshot yet (the mock's no-trades scenario). */
+  | { status: 'empty' }
+  | {
+      status: 'ready';
+      /** When the standings were computed (epoch ms); null for fixtures. */
+      computedAt: number | null;
+      periods: Record<Period, PeriodStanding>;
+      /** Null when signed out or the caller has no valuation record. */
+      personal: Personal | null;
+    };
 
 export type TradingSource = {
   kind: 'mock' | 'live';
@@ -160,6 +205,7 @@ export type TradingSource = {
   session: Session | null;
   /** Participant-facing notice such as an exchange restart. */
   notice: string | null;
-  /** Null in live mode: valuation, performance, rankings, and keys are unavailable. */
+  competition: Competition;
+  /** Null in live mode: API key management is unavailable. */
   samples: Samples | null;
 };

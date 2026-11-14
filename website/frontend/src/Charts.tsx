@@ -2,8 +2,8 @@
  * Accessible SVG charts.
  * @implemented-ui Candle chart renders any supplied candles with computed scales,
  *   time labels, and a last-price marker; empty-state rendering.
- * @mock-backend The personal performance series exists only as sample data.
- * @mock-frontend Performance chart scale, dates, and description match the sample series.
+ * @implemented-ui Performance chart computes scale and dates from a live series.
+ * @mock-frontend The sample performance series keeps its fixed scale, dates and description.
  */
 import { cx } from './styles';
 import { useTrading } from './trading/context.tsx';
@@ -25,18 +25,77 @@ export function EmptyChart({
     </div>
   );
 }
-/** @mock-backend Sample account history only. @mock-frontend Scale, dates, and text. @implemented-ui SVG rendering. */
-export function PerformanceChart({ series }: { series: number[] }) {
+const DAY = 24 * 60 * 60 * 1000;
+const dayLabel = (epoch: number) =>
+  new Date(epoch)
+    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    .toUpperCase();
+
+/** Round grid steps (1, 2, 5 × 10^n) covering the value range. */
+function grid(low: number, high: number) {
+  const span = Math.max(high - low, Math.abs(high) * 0.01, 1);
+  const raw = span / 3;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? raw;
+  const first = Math.floor(low / step) * step;
+  const lines: number[] = [];
+  for (let value = first; value <= high + step * 0.01; value += step)
+    lines.push(value);
+  if (lines.length < 2) lines.push(first + step);
+  return lines;
+}
+
+const compact = (value: number) =>
+  Math.abs(value) >= 10_000
+    ? `${Number((value / 1000).toFixed(1))}k`
+    : Number(value.toFixed(2)).toString();
+
+/**
+ * @implemented-ui SVG rendering of account value history.
+ * With `times` (live), scale, grid and dates are computed from the series.
+ * @mock-frontend Without `times`, the fixed sample scale, dates and description apply.
+ */
+export function PerformanceChart({
+  series,
+  times = null,
+}: {
+  series: number[];
+  times?: number[] | null;
+}) {
   const left = 20,
     right = 545,
     top = 22,
     bottom = 195;
+  const live = times != null && times.length === series.length;
+  const lines = live
+    ? grid(Math.min(...series), Math.max(...series))
+    : [100000, 110000, 120000, 130000];
+  const low = live ? (lines[0] ?? 0) : 95000;
+  const high = live ? (lines.at(-1) ?? 1) : 140000;
   const y = (value: number) =>
-    bottom - ((value - 95000) / 45000) * (bottom - top);
-  const points = series.map(
-    (value, index) =>
-      `${left + (index / (series.length - 1)) * (right - left)},${y(value)}`,
-  );
+    bottom - ((value - low) / (high - low || 1)) * (bottom - top);
+  const x = (index: number) =>
+    series.length < 2
+      ? right
+      : left + (index / (series.length - 1)) * (right - left);
+  const points = series.map((value, index) => `${x(index)},${y(value)}`);
+  const first = times?.[0] ?? 0;
+  const last = times?.at(-1) ?? 0;
+  const dates = live
+    ? last - first < DAY
+      ? [first, last].map((epoch) =>
+          new Date(epoch).toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        )
+      : [0, 1, 2, 3].map((part) =>
+          dayLabel(first + ((last - first) * part) / 3),
+        )
+    : ['15 OCT', '23 OCT', '31 OCT', '07 NOV'];
+  const description = live
+    ? `Account value from ${compact(series[0] ?? 0)} to ${compact(series.at(-1) ?? 0)} between ${dayLabel(first)} and ${dayLabel(last)}, sampled every 10 minutes.`
+    : 'Fixed sample history rises from 100,000 EUR to 130,450 EUR between 15 October and 7 November 2026. This is illustrative, not live performance.';
   return (
     <svg
       viewBox="0 0 610 230"
@@ -44,17 +103,14 @@ export function PerformanceChart({ series }: { series: number[] }) {
       aria-labelledby="performance-svg-title performance-svg-description"
     >
       <title id="performance-svg-title">Personal account value</title>
-      <desc id="performance-svg-description">
-        Fixed sample history rises from 100,000 EUR to 130,450 EUR between 15
-        October and 7 November 2026. This is illustrative, not live performance.
-      </desc>
+      <desc id="performance-svg-description">{description}</desc>
       <defs>
         <linearGradient id="performance-fill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#5b5bf0" stopOpacity=".25" />
           <stop offset="100%" stopColor="#5b5bf0" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {[100000, 110000, 120000, 130000].map((value) => (
+      {lines.map((value) => (
         <g key={value}>
           <line
             x1={left}
@@ -65,12 +121,12 @@ export function PerformanceChart({ series }: { series: number[] }) {
             strokeDasharray="3 5"
           />
           <text x="558" y={y(value) + 4}>
-            {value / 1000}k
+            {live ? compact(value) : `${value / 1000}k`}
           </text>
         </g>
       ))}
       <path
-        d={`M${points.join(' L')} L${right},${bottom} L${left},${bottom} Z`}
+        d={`M${points.join(' L')} L${right},${bottom} L${x(0)},${bottom} Z`}
         fill="url(#performance-fill)"
       />
       <polyline
@@ -82,24 +138,21 @@ export function PerformanceChart({ series }: { series: number[] }) {
       />
       <circle
         cx={right}
-        cy={y(series.at(-1) ?? 130450)}
+        cy={y(series.at(-1) ?? 0)}
         r="4"
         fill="#b8b6ff"
         stroke="#202039"
         strokeWidth="4"
       />
-      <text x="20" y="222">
-        15 OCT
-      </text>
-      <text x="185" y="222">
-        23 OCT
-      </text>
-      <text x="355" y="222">
-        31 OCT
-      </text>
-      <text x="495" y="222">
-        07 NOV
-      </text>
+      {dates.map((label, index) => (
+        <text
+          key={label + String(index)}
+          x={dates.length === 2 ? [20, 495][index] : [20, 185, 355, 495][index]}
+          y="222"
+        >
+          {label}
+        </text>
+      ))}
     </svg>
   );
 }

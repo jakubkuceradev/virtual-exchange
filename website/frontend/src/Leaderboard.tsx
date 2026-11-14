@@ -1,25 +1,37 @@
 /**
- * Leaderboard: real selection UI over sample observations.
- * @mock-backend All periods select fixed ranks/returns/participants; live mode has no rankings
- *   and shows an unavailable state.
- * @mock-frontend Participant count and summary standings are fixed visual placeholders.
- * @implemented-ui Period selection, selection persistence, summary/table/nearby layout.
- * Replace period datasets with website-backend results; retain selection/rendering.
+ * Leaderboard over the source's competition view.
+ * @implemented-ui Period selection, selection persistence, summary/table/nearby
+ *   layout. Live standings come from the website backend and are public; the
+ *   caller's rank and return appear when signed in. Unavailable or stale data
+ *   shows the unavailable state, never fixtures.
  */
 import { useState } from 'react';
 import type { Period } from './fixtures.ts';
-import { Nearby, PeriodControls, RankingRows } from './Standings';
+import {
+  Nearby,
+  PeriodControls,
+  periodLabels,
+  RankingRows,
+  unrankedMessage,
+} from './Standings';
 import { cx, signed } from './styles';
 import { useTrading } from './trading/context.tsx';
 
-/** @mock-backend Selected period reads fixtures, not a service. @implemented-ui Period selection is functional. */
+/** @implemented-ui Period selection over source standings. */
 export function Leaderboard({ active }: { active: boolean }) {
-  const { samples, identity } = useTrading();
+  const { competition, identity } = useTrading();
   const [selected, setSelected] = useState<Period>('continuous');
-  const period = samples?.periods[selected] ?? null;
-  const empty = !!samples?.empty;
-  const participantCount = samples?.participantCount;
-  const rankings = { period, empty, you: identity?.name ?? '' };
+  const ready = competition.status === 'ready';
+  const period = ready ? competition.periods[selected] : null;
+  const empty = competition.status === 'empty';
+  const participantCount = period?.participantCount;
+  const you = period?.you ?? null;
+  const rankings = {
+    period: empty ? null : period,
+    empty,
+    you: identity?.name ?? '',
+  };
+  const placeholder = !period || empty;
   return (
     <section
       data-view="leaderboard"
@@ -33,26 +45,33 @@ export function Leaderboard({ active }: { active: boolean }) {
         <PeriodControls
           value={selected}
           onChange={setSelected}
-          disabled={!samples}
+          disabled={!ready && !empty}
         />
       </div>
       <div className={cx('leader-summary')}>
         <div>
           <span className={cx('label')}>{'YOUR RANK'}</span>
           <strong id="leader-rank">
-            {!period || empty ? (
+            {placeholder || you?.rank == null ? (
               '—'
             ) : (
               <>
-                #{period.rank} <small>/ {participantCount}</small>
+                #{you.rank} <small>/ {participantCount}</small>
               </>
             )}
           </strong>
         </div>
         <div>
           <span className={cx('label')}>{'YOUR RETURN'}</span>
-          <strong id="leader-return" className={cx('positive')}>
-            {!period || empty ? '—' : signed(period.profit)}
+          <strong
+            id="leader-return"
+            className={cx(
+              (you?.returnPercent ?? 0) >= 0 ? 'positive' : 'negative',
+            )}
+          >
+            {placeholder || you?.returnPercent == null
+              ? '—'
+              : signed(you.returnPercent)}
           </strong>
         </div>
       </div>
@@ -105,11 +124,18 @@ export function Leaderboard({ active }: { active: boolean }) {
         </aside>
       </div>
       <p id="period-feedback" className={cx('sr-only')} role="status">
-        {!samples
+        {competition.status === 'loading' ||
+        competition.status === 'unavailable'
           ? 'Rankings are not calculated yet.'
-          : !period || empty
+          : placeholder
             ? 'Awaiting the first ranking snapshot.'
-            : `${period.label} standings shown. Your sample rank is ${period.rank}.`}
+            : `${periodLabels[selected]} standings shown. ${
+                you == null
+                  ? 'Connect your account to see your rank.'
+                  : you.rank == null
+                    ? unrankedMessage(you.reason)
+                    : `Your rank is ${you.rank}.`
+              }`}
       </p>
     </section>
   );
