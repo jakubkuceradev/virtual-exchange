@@ -34,26 +34,20 @@ import {
   orderRows,
   snapshot,
 } from './account.ts';
-import type { BookState, Trades } from './market.ts';
-import {
-  applyLevels,
-  bookFromSnapshot,
-  candles,
-  mergeTrades,
-  ordered,
-  stats,
-  toBook,
-} from './market.ts';
+import { MarketHistory, windowStart } from './history.ts';
+import type { BookState } from './market.ts';
+import { applyLevels, bookFromSnapshot, toBook } from './market.ts';
 import type { Buffered, Feed } from './news.ts';
 import { prepend, recover } from './news.ts';
 import type { StreamEvent } from './protocol.ts';
 import { Assembler, ProcessChanged } from './protocol.ts';
 import type { Rest } from './rest.ts';
 import { RestFailure } from './rest.ts';
-import type { WireInstrument, WireOrder } from './wire.ts';
+import type { WireInstrument, WireOrder, WireTrade } from './wire.ts';
 import {
   instrument as decodeInstrument,
   order as decodeOrder,
+  trade as decodeTrade,
   list,
   object,
   text,
@@ -75,6 +69,8 @@ export type Environment = {
   setTimeout: (callback: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
   random: () => number;
+  /** Wall clock, epoch milliseconds; ages the price history window. */
+  now: () => number;
   randomBytes: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer>;
 };
 
@@ -82,6 +78,9 @@ export type Environment = {
 export const HEARTBEAT_DEADLINE_MS = 25_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 15_000;
+/** Newest-first trade pages fetched to fill the price history window. */
+export const HISTORY_PAGE_LIMIT = 5;
+const HISTORY_PAGE_SIZE = 1000;
 
 export type CommandState = {
   busy: boolean;
@@ -144,6 +143,12 @@ class Link {
   watchdog: unknown = null;
 }
 
+const clock = (epoch: number) =>
+  new Date(epoch).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 const initials = (name: string) =>
   name
     .split(/[^A-Za-z0-9]+/)
@@ -169,9 +174,13 @@ export class LiveSession {
   private marketPhase: MarketView['status'] = 'connecting';
   private book: BookState | null = null;
   private bookLive = false;
-  private trades: Trades = new Map();
-  private tradesSynced = false;
-  private bufferedTrades: unknown[] = [];
+  /** Price history: separate from market readiness, never blocks trading. */
+  private history = new MarketHistory();
+  private historyPhase: MarketView['historyStatus'] = 'loading';
+  private historySynced = false;
+  private bufferedTrades: WireTrade[] = [];
+  /** Local clock minus exchange clock, from the latest live trade. */
+  private clockSkew = 0;
 
   // Public news
   private newsLink: Link | null = null;
@@ -352,8 +361,9 @@ export class LiveSession {
     this.instrument = null;
     this.book = null;
     this.bookLive = false;
-    this.trades = new Map();
-    this.tradesSynced = false;
+    this.history = new MarketHistory();
+    this.historySynced = false;
+    this.historyPhase = 'loading';
     this.feed = [];
     this.newsSynced = false;
     this.newsPhase = 'connecting';
@@ -394,7 +404,8 @@ export class LiveSession {
   private retryPublic() {
     this.endPublic();
     this.bookLive = false;
-    this.tradesSynced = false;
+    this.historySynced = false;
+    if (this.historyPhase === 'ready') this.historyPhase = 'stale';
     this.marketPhase = this.book ? 'stale' : 'unavailable';
     this.emit();
     if (!this.running) return;
@@ -439,7 +450,7 @@ export class LiveSession {
   private onPublic(link: Link, event: StreamEvent) {
     switch (event.kind) {
       case 'subscribed':
-        void this.syncTrades(link);
+        void this.syncHistory(link);
         return;
       case 'snapshot':
         this.book = bookFromSnapshot(event.payload);
@@ -450,11 +461,18 @@ export class LiveSession {
           if (!this.book || !this.bookLive)
             throw new Error('Update before snapshot');
           this.book = applyLevels(this.book, event.payload);
-        } else if (this.tradesSynced)
-          this.trades = mergeTrades(this.trades, event.payload);
-        else {
-          this.bufferedTrades.push(event.payload);
-          return;
+        } else {
+          const trades = list(event.payload, 'trades').map(decodeTrade);
+          const newest = trades.at(-1);
+          if (newest) this.clockSkew = this.env.now() - newest.executedAt;
+          if (!this.historySynced) {
+            this.bufferedTrades.push(...trades);
+            return;
+          }
+          let changed = false;
+          for (const entry of trades)
+            changed = this.history.add(entry) || changed;
+          if (!changed) return;
         }
         break;
       case 'heartbeat':
@@ -464,25 +482,72 @@ export class LiveSession {
     this.emit();
   }
 
-  private async syncTrades(link: Link) {
-    try {
-      const page = await this.env.rest.all('/trades');
+  /**
+   * Fill the price history window from newest-first trade pages, stopping at the
+   * window start, at trades already applied, at the beginning of history, or at
+   * the page limit. A failed page is retried alone; loaded pages are kept.
+   */
+  private async syncHistory(link: Link) {
+    const known = this.history.appliedThrough !== null;
+    const collected: WireTrade[] = [];
+    let cursor: string | null = null;
+    let target: number | null = null;
+    let reachedKnown = false;
+    let complete = false;
+    let attempt = 0;
+    for (let pages = 0; pages < HISTORY_PAGE_LIMIT; ) {
+      let page: Awaited<ReturnType<Rest['page']>>;
+      let trades: WireTrade[];
+      try {
+        page = await this.env.rest.page('/trades', null, {
+          limit: String(HISTORY_PAGE_SIZE),
+          ...(cursor ? { cursor } : {}),
+        });
+        trades = page.data.map(decodeTrade);
+      } catch {
+        if (!link.alive) return;
+        if (this.historyPhase !== 'stale') this.historyPhase = 'unavailable';
+        this.emit();
+        await new Promise<void>((resolve) => {
+          this.env.setTimeout(() => resolve(), this.backoff(attempt++));
+        });
+        if (!link.alive) return;
+        continue;
+      }
       if (!link.alive || !this.sameProcess(page.processId)) return;
-      let trades = mergeTrades(this.trades, page.data);
-      for (const payload of this.bufferedTrades)
-        trades = mergeTrades(trades, payload);
-      this.bufferedTrades = [];
-      this.trades = trades;
-      this.tradesSynced = true;
-      this.marketReady();
-      this.emit();
-    } catch {
-      if (link.alive) this.retryPublic();
+      attempt = 0;
+      pages++;
+      collected.push(...trades);
+      const newest = trades[0];
+      if (target === null && newest) target = windowStart(newest.executedAt);
+      const oldest = trades.at(-1);
+      if (known && oldest && this.history.has(oldest)) {
+        reachedKnown = true;
+        complete = true;
+        break;
+      }
+      if (
+        !page.nextCursor ||
+        !oldest ||
+        (target !== null && oldest.executedAt < target)
+      ) {
+        complete = true;
+        break;
+      }
+      cursor = page.nextCursor;
     }
+    // A resync that could not reach applied trades would leave a gap: start over.
+    if (known && !reachedKnown) this.history = new MarketHistory();
+    this.history.load(collected, complete);
+    for (const entry of this.bufferedTrades) this.history.add(entry);
+    this.bufferedTrades = [];
+    this.historySynced = true;
+    this.historyPhase = 'ready';
+    this.emit();
   }
 
   private marketReady() {
-    if (this.bookLive && this.tradesSynced) {
+    if (this.bookLive && this.instrument) {
       this.marketPhase = 'ready';
       this.publicAttempt = 0;
     }
@@ -1056,8 +1121,10 @@ export class LiveSession {
 
   private compose(): LiveView {
     const instrument = this.instrument;
-    const sorted = ordered(this.trades);
-    const last = sorted.at(-1);
+    const history = this.history;
+    history.advance(this.env.now() - this.clockSkew);
+    const coverage = history.coverageStart;
+    const since = coverage === null ? null : clock(coverage);
     const market: MarketView = {
       status: this.marketPhase,
       instrument: instrument && {
@@ -1069,11 +1136,12 @@ export class LiveSession {
         quantityIncrement: instrument.quantityIncrement,
       },
       book: this.book ? toBook(this.book) : null,
-      lastPrice: last?.price ?? null,
-      chart: candles(sorted),
-      stats: stats(sorted),
-      statsLabel: 'SESSION',
-      historyNote: 'Since exchange start',
+      lastPrice: history.lastPrice,
+      chart: history.chart,
+      stats: history.stats,
+      historyStatus: this.historyPhase,
+      statsLabel: since === null ? '1H' : `SINCE ${since}`,
+      historyNote: since === null ? 'Last 60 minutes' : `Since ${since}`,
     };
     const identity: Identity | null = this.accountId
       ? {

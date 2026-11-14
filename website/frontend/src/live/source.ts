@@ -25,6 +25,7 @@ export function createBrowserSession() {
     setTimeout: (callback, ms) => window.setTimeout(callback, ms),
     clearTimeout: (handle) => window.clearTimeout(handle as number),
     random: Math.random,
+    now: Date.now,
     randomBytes: (bytes) => crypto.getRandomValues(bytes),
   });
 }
