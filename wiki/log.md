@@ -2,7 +2,7 @@
 
 ## 2026-11-14
 
-* **House agents ranked**: Three operator-run funded competitors (`kai`, `lena`, `max`) appear in rankings on purpose; the unlimited-funding invariant now covers liquidity bots only.
+* **House agents ranked**: Three operator-run funded competitors (`Kai`, `Lena`, `Max`) appear in rankings on purpose; the unlimited-funding invariant now covers liquidity bots only.
 
 ## 2026-11-10
 

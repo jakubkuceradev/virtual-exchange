@@ -60,7 +60,7 @@ scripts, hosted sandbox strategies on their accounts) is ranked normally.
   the exchange configuration and exclude on either marker; never infer from
   names or tokens.
 - **House agents are ranked on purpose (2026-11-14).** Three operator-run
-  competitors (`kai`, `lena`, `max`) give new participants opponents. They are
+  competitors (`Kai`, `Lena`, `Max`) give new participants opponents. They are
   ordinary `funded` accounts with the participant default allocation, trade on
   public data only, and rank like anyone else; no flag excludes them. Their
   strategies live in the private market repository.
