@@ -1,6 +1,7 @@
 """REST adapters invoke complete operations, never private financial steps."""
 
 import re
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -187,3 +188,13 @@ def register_trading(
     @app.get("/trades")
     async def trades(limit: int = 100, cursor: str | None = None):
         return wire(await service().list_trades(limit=limit, cursor=cursor))
+
+    @app.get("/candles")
+    async def candles(
+        granularity: int = 60,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ):
+        return wire(
+            await service().get_candles(granularity=granularity, start=start, end=end)
+        )

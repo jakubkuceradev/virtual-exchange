@@ -14,12 +14,14 @@ import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from virtual_exchange.amounts import Amounts, OrderRejected, decimal
 from virtual_exchange.auth import require_permission
+from virtual_exchange.exchange.candles import GRANULARITY_SECONDS, CandleSeries
 from virtual_exchange.exchange.configuration import (
     TradingConfigurationError,
     load_config,
@@ -41,6 +43,7 @@ from virtual_exchange.types import (
     AuthenticatedIdentity,
     Balance,
     Cancellation,
+    Candle,
     Execution,
     Fill,
     Funding,
@@ -154,6 +157,13 @@ class Exchange:
         self._failed = False
         self._on_store_failure = on_store_failure
         self._state = _State(engine, ledger, {}, recovered.commit_id)
+        self._candles = CandleSeries()
+        latest = self._store.latest_trade()
+        if latest is not None:
+            for trade in self._store.trades_since(
+                CandleSeries.window_start(latest.executed_at)
+            ):
+                self._candles.add(trade)
         # Accounts appear only at startup, so their directory is fixed here.
         self._directory = {
             account: (policy, created_at)
@@ -437,13 +447,14 @@ class Exchange:
         bundles = self._prepare_observations(candidate)
         # Durable before memory, memory before delivery: nothing awaits between
         # them, so no observation or response describes an unwritten commit.
+        trades = tuple(_trade(e) for e in candidate.executions)
         self._durably(
             lambda: self._store.commit(
                 commit_id=candidate.sequence,
                 new_order_id=candidate.new_order_id,
                 orders=candidate.orders.values(),
                 fills=candidate.fills,
-                trades=tuple(_trade(e) for e in candidate.executions),
+                trades=trades,
                 balances={
                     account: candidate.ledger.total[account]
                     for account in candidate.fills
@@ -452,6 +463,8 @@ class Exchange:
             )
         )
         self._state.apply(candidate)
+        for trade in trades:
+            self._candles.add(trade)
         self._deliver(bundles)
 
     def _deliver(self, bundles: tuple[tuple[str, str, tuple[str, ...]], ...]) -> None:
@@ -787,6 +800,34 @@ class Exchange:
                 cursor=cursor,
                 newest_first=True,
             )
+
+    async def get_candles(
+        self,
+        *,
+        granularity: int = GRANULARITY_SECONDS,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict:
+        """Recent candles and the last trade they include, at one commit.
+
+        Live trades with a greater ID extend them exactly; older history is
+        available from /trades.
+        """
+        if granularity != GRANULARITY_SECONDS:
+            raise TradingError("unsupported_granularity")
+        if any(
+            moment is not None and moment.tzinfo is None for moment in (start, end)
+        ) or (start is not None and end is not None and start >= end):
+            raise TradingError("invalid_request")
+        async with self._locked():
+            candles: tuple[Candle, ...] = self._candles.candles(start=start, end=end)
+            return {
+                "process_id": self.process_id,
+                "commit_id": self._state.sequence,
+                "granularity": granularity,
+                "through_trade_id": self._candles.through_trade_id,
+                "data": candles,
+            }
 
     async def publish_news(
         self, *, identity: AuthenticatedIdentity, draft: NewsDraft

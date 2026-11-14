@@ -133,7 +133,19 @@ Use one Uvicorn worker: state is process-local, not shared between workers.
 | GET /orders, /fills, /balances | read; own observations only |
 | GET /account/snapshot | read; coherent balances, orders, fill watermark and channel baselines (`{"orders": n, "fills": n}`) |
 | GET /accounts | observe_accounts; every account at one commit (see below) |
-| GET /instruments, /book, /trades | public, ignores optional credentials |
+| GET /instruments, /book, /trades, /candles | public, ignores optional credentials |
+
+`GET /candles?granularity=60[&start&end]` returns the last 300 one-minute
+buckets of actual executions (`start`, `open`, `high`, `low`, `close`,
+`volume`; empty buckets omitted), oldest first, with `process_id`, `commit_id`
+and `through_trade_id`, the last trade they include. Trades with a greater ID
+extend them exactly. `start`/`end` must carry a timezone and filter bucket
+starts to `[start, end)`. Other granularities return `400
+unsupported_granularity`. Candles live in memory, update per commit, and are
+rebuilt at startup from the last 300 minutes of stored trades (found by binary
+search over trade sequence); longer granularities would need a stored
+aggregate. The shape follows Coinbase product candles with this exchange's
+object/decimal-string conventions.
 
 POST requires instrument_id, side, price and quantity, with optional
 time_in_force (`GTC` or `IOC`); amounts must be canonical

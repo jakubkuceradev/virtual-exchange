@@ -575,6 +575,42 @@ class Store:
             (start, stop),
         )
 
+    def latest_trade(self) -> Trade | None:
+        row = self._db.execute(
+            "SELECT body FROM trades ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else _decode(Trade, row[0])
+
+    def trades_since(self, moment: datetime) -> tuple[Trade, ...]:
+        """Trades executed at or after moment, oldest first.
+
+        Trade sequence follows execution time, so a binary search over point
+        reads finds the first one without scanning or a time index.
+        """
+        (high,) = self._db.execute(
+            "SELECT coalesce(max(seq), 0) FROM trades"
+        ).fetchone()
+        low = 1
+        first = high + 1
+        while low <= high:
+            middle = (low + high) // 2
+            row = self._db.execute(
+                "SELECT seq, body FROM trades WHERE seq >= ? ORDER BY seq LIMIT 1",
+                (middle,),
+            ).fetchone()
+            if row is None:
+                high = middle - 1
+            elif _decode(Trade, row[1]).executed_at >= moment:
+                first = min(first, row[0])
+                high = middle - 1
+            else:
+                low = row[0] + 1
+        return self._range(
+            Trade,
+            "SELECT body FROM trades WHERE seq >= ? ORDER BY seq",
+            (first,),
+        )
+
     def news_between(self, start: int, stop: int) -> tuple[NewsItem, ...]:
         return self._range(
             NewsItem,

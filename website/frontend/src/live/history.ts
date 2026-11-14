@@ -6,14 +6,14 @@
  *   however long the exchange has run.
  * - Trade IDs are per-process increasing integers; one watermark deduplicates
  *   REST pages against stream events. A new process discards the instance.
+ * - Starts from the exchange's candle snapshot (`fromCandles`); trades after
+ *   the snapshot's last trade extend it exactly.
  * - Empty buckets are omitted, never filled; prices are never carried forward.
- * - When the backfill could not reach the window start, the oldest bucket may be
- *   partial; it is dropped and `coverageStart` reports where real data begins.
  */
 import type { Decimal } from '../trading/decimal.ts';
 import { add, cmp } from '../trading/decimal.ts';
 import type { Candle, Chart, MarketStats } from '../trading/types.ts';
-import type { WireTrade } from './wire.ts';
+import type { WireCandle, WireTrade } from './wire.ts';
 
 export const HISTORY_INTERVAL_MS = 60_000;
 export const HISTORY_BUCKETS = 60;
@@ -44,8 +44,6 @@ export class MarketHistory {
   private readonly recentIds = new Set<string>();
   private latest: number | null = null;
   private last: Decimal | null = null;
-  /** First bucket backed by complete data; null when history reaches exchange start. */
-  private start: number | null = null;
   private dirty = true;
   private cachedChart: Chart = EMPTY_CHART;
   private cachedStats: MarketStats | null = null;
@@ -69,10 +67,30 @@ export class MarketHistory {
   }
 
   /**
-   * Install backfilled trades (any order). `complete` is false when paging
-   * stopped before reaching the window start or the beginning of history.
+   * The window from an exchange candle snapshot whose buckets include every
+   * trade up to `throughTradeId`.
    */
-  load(trades: readonly WireTrade[], complete: boolean) {
+  static fromCandles(
+    candles: readonly WireCandle[],
+    throughTradeId: string | null,
+  ): MarketHistory {
+    const history = new MarketHistory();
+    const sorted = [...candles].sort((a, b) => a.start - b.start);
+    history.buckets = sorted.map((candle) => ({ ...candle }));
+    const newest = sorted.at(-1);
+    if (newest) {
+      history.latest = newest.start;
+      history.last = newest.close;
+    }
+    if (throughTradeId !== null && /^\d+$/.test(throughTradeId))
+      history.watermark = BigInt(throughTradeId);
+    history.prune();
+    history.touch();
+    return history;
+  }
+
+  /** Apply trades in any order, skipping those already reflected. */
+  load(trades: readonly WireTrade[]) {
     const fresh = trades
       .filter((trade) => !this.has(trade))
       .sort((a, b) => {
@@ -80,13 +98,7 @@ export class MarketHistory {
           y = tradeNumber(b) ?? 0n;
         return x < y ? -1 : x > y ? 1 : a.executedAt - b.executedAt;
       });
-    const firstLoad = this.buckets.length === 0 && this.watermark === null;
     for (const trade of fresh) this.apply(trade);
-    if (firstLoad && !complete && fresh[0]) {
-      const partial = bucketOf(fresh[0].executedAt);
-      this.buckets = this.buckets.filter((bucket) => bucket.start > partial);
-      this.start = partial + HISTORY_INTERVAL_MS;
-    }
     this.prune();
     this.touch();
   }
@@ -121,15 +133,6 @@ export class MarketHistory {
   get stats(): MarketStats | null {
     this.refresh();
     return this.cachedStats;
-  }
-
-  /**
-   * Where complete data begins, or null when the whole window (or all history
-   * since exchange start) is covered.
-   */
-  get coverageStart(): number | null {
-    if (this.start === null || this.latest === null) return null;
-    return this.start > windowStart(this.latest) ? this.start : null;
   }
 
   private apply(trade: WireTrade) {
