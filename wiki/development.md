@@ -190,23 +190,29 @@ Install Docker Engine and its Compose plugin. From the project root:
 docker compose up --build --wait
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8080/exchange/health
 docker compose down
 ```
 
 To change the host port on a POSIX shell:
 
 ```sh
-PORT=18000 WEBSITE_BACKEND_PORT=18001 docker compose up --build --wait
+PORT=18000 WEBSITE_BACKEND_PORT=18001 WEBSITE_PORT=18080 docker compose up --build --wait
 ```
 
-Compose builds exchange/ and website/backend/, publishing both to host loopback
-on ports 8000 and 8001 by default. Each API listens on all interfaces inside
-its container, runs as an unprivileged user, installs locked runtime dependencies,
-and has an HTTP healthcheck. The default stack has no volumes, credentials, or
-databases. Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
+Compose builds exchange/, website/backend/ and the production website image
+from website/frontend/, publishing them to host loopback on ports 8000, 8001 and
+8080 by default. The website forwards `/exchange/*` and `/website/*` to the
+exchange and website-backend services. Each API listens on all interfaces
+inside its container, runs as an unprivileged user, installs locked runtime dependencies,
+and has an HTTP healthcheck. The default stack has no credentials or trading
+configuration. The API mounts the named volume `exchange-state` at
+`/var/lib/virtual-exchange` (`EXCHANGE_STATE_DIR`) and restarts unless stopped.
+Store initialisation, backup and restore are in [persistence](/persistence.md). Optional private auth configuration uses a read-only bind mount; see [authentication](/authentication.md).
 Neither health endpoint depends on the other service. Build needs
 network access to registries and package sources; runtime needs no external
-service. This is local scaffolding, not production deployment configuration.
+service. This is local scaffolding, not deployment configuration; the images'
+runtime contract is in [deployment images](/deployment.md).
 
 For Docker without Compose:
 
@@ -234,7 +240,8 @@ Stop that container from another terminal with `docker stop virtual-exchange-loc
 | website/frontend/src/, package.json, package-lock.json | React/headless Mantine views, independent npm dependencies and Vite build |
 | website/frontend/e2e/ | Production browser interaction checks |
 | website/frontend/design/, tests/, previews/ | Buildless HTML design preview, focused state checks, and desktop/mobile screenshots |
-| compose.yaml, .github/workflows/ | Shared local startup and CI |
+| website/frontend/Dockerfile, Caddyfile | Production website image: static build plus `/exchange` forwarding |
+| compose.yaml, .github/workflows/ | Shared local startup, CI, and GHCR image publishing |
 | wiki/ | Project knowledge and offline visual overview |
 
 The exchange, website backend, and frontend build/run independently. The React

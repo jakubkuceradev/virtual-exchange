@@ -3,7 +3,24 @@ services:
     build: ./exchange
     ports:
       - "127.0.0.1:${PORT:-8000}:8000"
+    # A store write failure stops the process; restarting runs recovery.
+    restart: unless-stopped
+    volumes:
+      - exchange-state:/var/lib/virtual-exchange
   website-backend:
     build: ./website/backend
     ports:
       - "127.0.0.1:${WEBSITE_BACKEND_PORT:-8001}:8000"
+  website:
+    build: ./website/frontend
+    environment:
+      EXCHANGE_UPSTREAM: api:8000
+      WEBSITE_BACKEND_UPSTREAM: website-backend:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEBSITE_PORT:-8080}:8080"
+
+volumes:
+  exchange-state:
